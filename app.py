@@ -87,16 +87,24 @@ def check_and_update_ip_port():
 
 @app.route('/restart', methods=['POST'])
 def restart():
+    logger.info(f"Restart requested from {request.remote_addr}")
     try:
-        logger.info(f"Restart requested from {request.remote_addr}")
-        subprocess.run(['sudo', '/bin/systemctl', 'restart', 'label-printer.service'], check=True)
+        logger.debug("Starting restart endpoint")
+        # Delay to ensure response is sent
+        time.sleep(1)
+        logger.debug("Initiating systemctl restart label-printer.service")
+        # Use Popen for non-blocking restart
+        process = subprocess.Popen(
+            ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        logger.debug(f"Started systemctl restart with PID {process.pid}")
         return jsonify({'message': 'Webserver restart initiated. Please wait a few seconds and refresh.'})
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to restart webserver: {str(e)}")
-        return jsonify({'message': f'Failed to restart webserver: {str(e)}'}), 500
     except Exception as e:
-        logger.error(f"Unexpected error during restart: {str(e)}")
-        return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
+        logger.error(f"Failed to initiate server restart: {str(e)}")
+        return jsonify({'message': f'Failed to initiate server restart: {str(e)}'}), 500
 
 @app.route('/printer_status', methods=['GET'])
 def printer_status():
