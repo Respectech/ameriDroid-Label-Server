@@ -89,9 +89,14 @@ window.updateCodebase = function() {
         .then(response => {
             console.log('Received response from /update_codebase:', response);
             if (!response.ok) {
-                return response.json().then(err => { 
-                    console.error('Error response:', err);
-                    throw new Error(err.message || 'Unknown server error'); 
+                return response.text().then(text => {
+                    console.error('Error response text:', text);
+                    try {
+                        const err = JSON.parse(text);
+                        throw new Error(err.message || 'Unknown server error');
+                    } catch {
+                        throw new Error(text || 'Failed to fetch update_codebase');
+                    }
                 });
             }
             return response.json();
@@ -103,13 +108,23 @@ window.updateCodebase = function() {
         })
         .catch(error => {
             console.error('Error in updateCodebase:', error);
-            showAlert('Error updating codebase: ' + error.message, 'danger');
-            console.log('Error alert triggered:', error.message);
+            try {
+                showAlert('Error updating codebase: ' + error.message, 'danger');
+                console.log('Error alert triggered:', error.message);
+            } catch (alertError) {
+                console.error('Failed to show alert:', alertError);
+                alert('Error updating codebase: ' + error.message);
+            }
         });
     } catch (error) {
         console.error('Unexpected error in updateCodebase:', error);
-        showAlert('Unexpected error updating codebase: ' + error.message, 'danger');
-        console.log('Unexpected error alert triggered:', error.message);
+        try {
+            showAlert('Unexpected error updating codebase: ' + error.message, 'danger');
+            console.log('Unexpected error alert triggered:', error.message);
+        } catch (alertError) {
+            console.error('Failed to show alert:', alertError);
+            alert('Unexpected error updating codebase: ' + error.message);
+        }
     }
 };
 
