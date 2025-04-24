@@ -262,6 +262,71 @@ def delete_template():
         logger.error(f"Unexpected error in delete_template: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
 
+@app.route('/update_codebase', methods=['POST'])
+def update_codebase():
+    logger.info(f"Update codebase requested from {request.remote_addr}")
+    try:
+        # Log start of operation
+        logger.debug("Starting update_codebase endpoint")
+        
+        # Change to the codebase directory
+        codebase_dir = "/home/odroid/label_printer_web"
+        logger.debug(f"Checking codebase directory: {codebase_dir}")
+        if not os.path.exists(codebase_dir):
+            logger.error(f"Codebase directory {codebase_dir} does not exist")
+            return jsonify({'message': f'Codebase directory {codebase_dir} does not exist'}), 500
+
+        # Verify .git directory
+        git_dir = os.path.join(codebase_dir, ".git")
+        logger.debug(f"Checking .git directory: {git_dir}")
+        if not os.path.exists(git_dir):
+            logger.error(f"Git repository not found at {git_dir}")
+            return jsonify({'message': 'Git repository not initialized in codebase directory'}), 500
+
+        # Execute git pull with timeout
+        logger.debug("Executing git pull origin main")
+        try:
+            result = subprocess.run(
+                ['git', '-C', codebase_dir, 'pull', 'origin', 'main'],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30  # 30-second timeout
+            )
+            logger.info(f"Git pull output: {result.stdout}")
+            if result.stderr:
+                logger.warning(f"Git pull stderr: {result.stderr}")
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Git pull timed out after 30 seconds: {str(e)}")
+            return jsonify({'message': 'Git pull operation timed out'}), 500
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git pull failed: stdout={e.stdout}, stderr={e.stderr}")
+            return jsonify({'message': f'Failed to update codebase: {e.stderr}'}), 500
+
+        # Restart the server
+        logger.debug("Executing systemctl restart label-printer.service")
+        try:
+            result = subprocess.run(
+                ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10  # 10-second timeout
+            )
+            logger.info(f"Systemctl restart output: {result.stdout}")
+            if result.stderr:
+                logger.warning(f"Systemctl restart stderr: {result.stderr}")
+            return jsonify({'message': 'Codebase update initiated. Server is restarting. Please wait a few seconds and refresh.'})
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Systemctl restart timed out after 10 seconds: {str(e)}")
+            return jsonify({'message': 'Server restart timed out'}), 500
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to restart server: stdout={e.stdout}, stderr={e.stderr}")
+            return jsonify({'message': f'Codebase updated, but failed to restart server: {e.stderr}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error in update_codebase: {str(e)}")
+        return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
+
 if __name__ == "__main__":
     ensure_history_file()
     resolve_usb_conflicts()
