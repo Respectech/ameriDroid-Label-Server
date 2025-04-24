@@ -1,0 +1,252 @@
+.text-area { 
+    width: 100%; 
+    height: 100px; 
+    resize: vertical; 
+}
+.options { 
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 10px; 
+    align-items: center; 
+}
+.preview-wrapper { 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    padding: 20px;
+    overflow: visible; 
+}
+.preview-wrapper img { 
+    max-width: 100%; 
+    border: 1px solid #ccc; 
+}
+.preview-wrapper.rotated { 
+    min-height: 800px;
+    min-width: 1600px;
+}
+.preview-wrapper.rotated img { 
+    transform: rotate(90deg); 
+    transform-origin: center center; 
+    max-width: 1400px;
+    max-height: none; 
+}
+.textarea1-bg, .textarea3-bg {
+    background-color: #555;
+    padding: 10px;
+    border-radius: 5px;
+}
+.textarea2-bg {
+    background-color: #666;
+    padding: 10px;
+    border-radius: 5px;
+}
+body {
+    background-color: black;
+    color: white;
+    font-size: 16px;
+}
+.card {
+    background-color: #333;
+    color: white;
+}
+.form-control, .form-select {
+    background-color: #444;
+    color: white;
+    border-color: #666;
+    font-size: 16px;
+    padding: 8px;
+}
+.form-check-input:checked {
+    background-color: #007bff;
+}
+.font-name {
+    cursor: pointer;
+    padding: 8px;
+    border: 1px solid #666;
+    background-color: #444;
+    display: inline-block;
+    min-width: 120px;
+    font-size: 16px;
+}
+.font-list-item {
+    cursor: pointer;
+    padding: 12px;
+    border-bottom: 1px solid #666;
+    font-size: 16px;
+}
+.font-list-item:hover {
+    background-color: #555;
+}
+.modal-xl-custom {
+    max-width: 90vw;
+    width: 1600px;
+}
+.modal-body-preview {
+    max-height: 85vh;
+    overflow-x: auto;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+}
+.btn {
+    padding: 10px 20px;
+    font-size: 16px;
+}
+.dropdown-container {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+}
+.dropdown-menu {
+    background-color: #333;
+    border-color: #666;
+}
+.dropdown-item {
+    color: white;
+    font-size: 16px;
+}
+.dropdown-item:hover {
+    background-color: #555;
+}
+.printer-status {
+    margin-left: 20px;
+    font-size: 18px;
+    font-weight: bold;
+}
+.printer-status.online {
+    color: #28a745; /* Green */
+}
+.printer-status.offline {
+    color: #dc3545; /* Red */
+}
+.header-container {
+    display: flex;
+    align-items: center;
+}
+/* Fix for Save Template modal appearing behind Print Preview modal */
+#saveTemplateModal {
+    z-index: 1060; /* Higher than default modal z-index (1050) */
+}
+#saveTemplateModal .modal-backdrop {
+    z-index: 1055; /* Higher than default backdrop (1040) but below modal */
+}
+/* Style for error/success alerts */
+.alert-container {
+    margin-top: 20px;
+}
+/* Styles for Load Template modal */
+#loadTemplateModal {
+    z-index: 1060; /* Same as saveTemplateModal */
+}
+#loadTemplateModal .modal-backdrop {
+    z-index: 1055;
+}
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+.template-item {
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+    position: relative; /* For positioning delete button */
+}
+.template-item:hover {
+    transform: scale(1.05);
+}
+.template-item img {
+    max-width: 100%;
+    height: 150px;
+    object-fit: contain;
+    border: 1px solid #666;
+    border-radius: 5px;
+}
+.template-item p {
+    margin: 10px 0 0;
+    font-size: 14px;
+    word-break: break-word;
+}
+.template-item .delete-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
+}
+.template-item:hover .delete-btn {
+    opacity: 1;
+}
+.template-item .delete-btn:hover {
+    background-color: #dc3545; /* Red on hover */
+}
+@media (max-width: 768px) {
+    .options {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .font-name {
+        min-width: 100%;
+        text-align: center;
+    }
+    .modal-xl-custom {
+        max-width: 95%;
+        margin: 10px;
+    }
+    .modal-body-preview {
+        max-height: 70vh;
+    }
+    .preview-wrapper.rotated {
+        min-height: 400px;
+        min-width: 100%;
+    }
+    .preview-wrapper.rotated img {
+        max-width: 90vw;
+    }
+    .form-label {
+        font-size: 14px;
+    }
+    .form-control, .form-select {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    .btn {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    .row.align-items-center > div {
+        margin-bottom: 10px;
+    }
+    .dropdown-container {
+        top: 5px;
+        right: 5px;
+    }
+    .printer-status {
+        margin-left: 10px;
+        font-size: 16px;
+    }
+    .template-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
+    }
+    .template-item img {
+        height: 100px;
+    }
+    .template-item .delete-btn {
+        width: 25px;
+        height: 25px;
+        font-size: 14px;
+    }
+}
