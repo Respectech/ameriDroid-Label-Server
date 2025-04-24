@@ -292,6 +292,45 @@ async function deleteTemplate(templateName) {
     }
 }
 
+// Function to show alerts
+function showAlert(message, type) {
+    console.log(`Attempting to show alert: ${message} (type: ${type})`);
+    try {
+        var alertContainer = document.getElementById('saveTemplateAlerts');
+        if (!alertContainer) {
+            console.error('Alert container not found (#saveTemplateAlerts)');
+            alert('Error: Alert container not found - ' + message);
+            return;
+        }
+        console.log('Alert container found:', alertContainer);
+        var alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.role = 'alert';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        alertContainer.appendChild(alertDiv);
+        console.log('Alert appended to container:', alertDiv);
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.classList.remove('show');
+                alertDiv.classList.add('fade');
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                        console.log('Alert removed after timeout');
+                    }
+                }, 150);
+            }
+        }, 5000);
+    } catch (error) {
+        console.error('Error in showAlert:', error);
+        alert('Failed to show alert: ' + message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM content loaded');
 
@@ -420,43 +459,4 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         console.log('Load template modal hidden, z-index reset');
     });
-
-    // Function to show alerts
-    function showAlert(message, type) {
-        console.log(`Attempting to show alert: ${message} (type: ${type})`);
-        try {
-            var alertContainer = document.getElementById('saveTemplateAlerts');
-            if (!alertContainer) {
-                console.error('Alert container not found (#saveTemplateAlerts)');
-                alert('Error: Alert container not found - ' + message);
-                return;
-            }
-            console.log('Alert container found:', alertContainer);
-            var alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.role = 'alert';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            alertContainer.appendChild(alertDiv);
-            console.log('Alert appended to container:', alertDiv);
-            // Auto-dismiss after 5 seconds
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.classList.remove('show');
-                    alertDiv.classList.add('fade');
-                    setTimeout(() => {
-                        if (alertDiv.parentNode) {
-                            alertDiv.remove();
-                            console.log('Alert removed after timeout');
-                        }
-                    }, 150);
-                }
-            }, 5000);
-        } catch (error) {
-            console.error('Error in showAlert:', error);
-            alert('Failed to show alert: ' + message);
-        }
-    }
 });
