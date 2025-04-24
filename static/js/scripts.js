@@ -54,28 +54,56 @@ window.saveTemplate = function() {
 };
 
 window.restartWebserver = function() {
-    console.log('restartWebserver called');
+    console.log('restartWebserver button clicked');
     if (confirm('Are you sure you want to restart the webserver? This will temporarily disrupt access.')) {
+        console.log('User confirmed restart, sending POST to /restart');
         fetch('/restart', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Fetch response received, status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
-            alert(data.message);
-            // Check for reload or redirect instruction
+            console.log('Parsed JSON response:', data);
+            try {
+                alert(data.message); // Display the message
+                console.log('Alert displayed with message:', data.message);
+            } catch (alertError) {
+                console.error('Error displaying alert:', alertError);
+            }
             if (data.reload || data.redirect) {
-                console.log('Reloading page after restart');
+                console.log('Reload condition met, scheduling reload to:', data.redirect || '/');
                 setTimeout(() => {
-                    window.location.href = data.redirect || '/';
-                }, 3000); // Delay to allow server restart
+                    console.log('Executing reload now');
+                    try {
+                        window.location.href = (data.redirect || '/') + '?t=' + new Date().getTime();
+                        console.log('window.location.href set');
+                    } catch (navError) {
+                        console.error('Error setting window.location.href:', navError);
+                    }
+                }, 5000); // Increased to 5 seconds for debugging
+            } else {
+                console.log('No reload/redirect in response');
             }
         })
         .catch(error => {
-            alert('Error restarting webserver: ' + error);
+            console.error('Error in restartWebserver:', error);
+            try {
+                alert('Error restarting webserver: ' + error.message);
+                console.log('Error alert displayed');
+            } catch (alertError) {
+                console.error('Error displaying error alert:', alertError);
+            }
         });
+    } else {
+        console.log('User canceled restart');
     }
 };
 
