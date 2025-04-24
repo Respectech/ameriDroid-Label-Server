@@ -172,23 +172,63 @@ window.updateCodebase = function() {
 
 window.selectFont = function(fontName, applyToAll) {
     console.log('selectFont called with:', fontName, applyToAll);
-    let currentTextarea = window.currentTextarea;
-    if (applyToAll) {
-        document.querySelectorAll('.font-name').forEach(function(element) {
-            element.textContent = fontName;
-            element.style.fontFamily = fontName;
-            document.getElementById('face' + element.getAttribute('data-textarea')).value = fontName;
-        });
-    } else {
-        var textareaNum = currentTextarea;
-        var fontElement = document.querySelector('.font-name[data-textarea="' + textareaNum + '"]');
-        if (fontElement) {
-            element.textContent = fontName;
-            element.style.fontFamily = fontName;
-            document.getElementById('face' + textareaNum).value = fontName;
+    try {
+        let currentTextarea = window.currentTextarea;
+        console.log('Current textarea:', currentTextarea);
+        if (applyToAll) {
+            console.log('Applying font to all textareas');
+            document.querySelectorAll('.font-name').forEach(function(element) {
+                element.textContent = fontName;
+                element.style.fontFamily = fontName;
+                let textareaNum = element.getAttribute('data-textarea');
+                let faceInput = document.getElementById('face' + textareaNum);
+                if (faceInput) {
+                    faceInput.value = fontName;
+                    console.log(`Updated face${textareaNum} to ${fontName}`);
+                } else {
+                    console.warn(`face${textareaNum} input not found`);
+                }
+            });
+        } else {
+            console.log('Applying font to textarea:', currentTextarea);
+            if (!currentTextarea) {
+                console.error('No currentTextarea set');
+                showAlert('Error: Please select a textarea first', 'danger');
+                return;
+            }
+            var textareaNum = currentTextarea;
+            var fontElement = document.querySelector('.font-name[data-textarea="' + textareaNum + '"]');
+            if (fontElement) {
+                fontElement.textContent = fontName; // Fixed: Use fontElement
+                fontElement.style.fontFamily = fontName; // Fixed: Use fontElement
+                let faceInput = document.getElementById('face' + textareaNum);
+                if (faceInput) {
+                    faceInput.value = fontName;
+                    console.log(`Updated face${textareaNum} to ${fontName}`);
+                } else {
+                    console.warn(`face${textareaNum} input not found`);
+                }
+            } else {
+                console.error(`.font-name[data-textarea="${textareaNum}"] not found`);
+                showAlert('Error: Font display element not found', 'danger');
+            }
         }
+        // Close the font modal
+        try {
+            let modal = bootstrap.Modal.getInstance(document.getElementById('fontModal'));
+            if (modal) {
+                modal.hide();
+                console.log('Font modal closed');
+            } else {
+                console.warn('Font modal instance not found');
+            }
+        } catch (modalError) {
+            console.error('Error closing font modal:', modalError);
+        }
+    } catch (error) {
+        console.error('Error in selectFont:', error);
+        showAlert('Error selecting font: ' + error.message, 'danger');
     }
-    bootstrap.Modal.getInstance(document.getElementById('fontModal')).hide();
 };
 
 // Function to load template into label form
