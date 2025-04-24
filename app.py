@@ -101,7 +101,12 @@ def restart():
             text=True
         )
         logger.debug(f"Started systemctl restart with PID {process.pid}")
-        return jsonify({'message': 'Webserver restart initiated. Please wait a few seconds and refresh.'})
+        # Updated response to include reload instruction
+        return jsonify({
+            'message': 'Webserver restart initiated. Please wait a few seconds and refresh.',
+            'reload': True,  # Instruct client to reload the main page
+            'redirect': '/'  # Alternatively, specify the main page URL
+        })
     except Exception as e:
         logger.error(f"Failed to initiate server restart: {str(e)}")
         return jsonify({'message': f'Failed to initiate server restart: {str(e)}'}), 500
@@ -336,14 +341,19 @@ def update_codebase():
                 text=True
             )
             logger.debug(f"Started systemctl restart with PID {process.pid}")
-            return jsonify({'message': 'Codebase update initiated. Server is restarting. Please wait a few seconds and refresh.'})
+            # Updated response to include reload instruction
+            return jsonify({
+                'message': 'Codebase update initiated. Server is restarting. Please wait a few seconds and refresh.',
+                'reload': True,  # Instruct client to reload the main page
+                'redirect': '/'  # Alternatively, specify the main page URL
+            })
         except Exception as e:
             logger.error(f"Failed to initiate server restart: {str(e)}")
             return jsonify({'message': f'Codebase updated, but failed to initiate server restart: {str(e)}'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in update_codebase: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
-
+        
 if __name__ == "__main__":
     logger.info("Starting Flask application")
     try:
