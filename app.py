@@ -283,65 +283,79 @@ def update_codebase():
             logger.error(f"Git repository not found at {git_dir}")
             return jsonify({'message': 'Git repository not initialized in codebase directory'}), 500
 
-        # Execute git pull with timeout
+        # Check if git is installed
+        logger.debug("Checking git installation")
+        try:
+            subprocess.run(['git', '--version'], capture_output=True, text=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.error(f"Git is not installed or not accessible: {str(e)}")
+            return jsonify({'message': 'Git is not installed on the server'}), 500
+
+        # Execute git pull with timeout and environment
         logger.debug("Executing git pull origin main")
+        env = os.environ.copy()
+        env['HOME'] = '/home/odroid'  # Ensure HOME is set for git credentials
         try:
             result = subprocess.run(
                 ['git', '-C', codebase_dir, 'pull', 'origin', 'main'],
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30  # 30-second timeout
+                timeout=30,
+                env=env
             )
-            logger.info(f"Git pull output: {result.stdout}")
+            logger.info(f"Git pull stdout: {result.stdout}")
             if result.stderr:
                 logger.warning(f"Git pull stderr: {result.stderr}")
         except subprocess.TimeoutExpired as e:
-            logger.error(f"Git pull timed out after 30 seconds: {str(e)}")
+            logger.error(f"Git pull timed out after 30 seconds: stdout={e.stdout}, stderr={e.stderr}")
             return jsonify({'message': 'Git pull operation timed out'}), 500
         except subprocess.CalledProcessError as e:
             logger.error(f"Git pull failed: stdout={e.stdout}, stderr={e.stderr}")
             return jsonify({'message': f'Failed to update codebase: {e.stderr}'}), 500
+        except Exception as e:
+            logger.error(f"Unexpected error during git pull: {str(e)}")
+            return jsonify({'message': f'Unexpected error during git pull: {str(e)}'}), 500
 
-        # Restart the server
-        logger.debug("Executing systemctl restart label-printer.service")
+        # Restart the server asynchronously to avoid blocking
+        logger.debug("Initiating systemctl restart label-printer.service")
         try:
-            result = subprocess.run(
+            # Use subprocess.Popen to run restart non-blocking
+            process = subprocess.Popen(
                 ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10  # 10-second timeout
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
-            logger.info(f"Systemctl restart output: {result.stdout}")
-            if result.stderr:
-                logger.warning(f"Systemctl restart stderr: {result.stderr}")
+            logger.debug(f"Started systemctl restart with PID {process.pid}")
             return jsonify({'message': 'Codebase update initiated. Server is restarting. Please wait a few seconds and refresh.'})
-        except subprocess.TimeoutExpired as e:
-            logger.error(f"Systemctl restart timed out after 10 seconds: {str(e)}")
-            return jsonify({'message': 'Server restart timed out'}), 500
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to restart server: stdout={e.stdout}, stderr={e.stderr}")
-            return jsonify({'message': f'Codebase updated, but failed to restart server: {e.stderr}'}), 500
+        except Exception as e:
+            logger.error(f"Failed to initiate server restart: {str(e)}")
+            return jsonify({'message': f'Codebase updated, but failed to initiate server restart: {str(e)}'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in update_codebase: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
 
 if __name__ == "__main__":
-    ensure_history_file()
-    resolve_usb_conflicts()
-    defaults = load_default_settings()
-    app.config['DEFAULTS'] = defaults
-    check_and_update_ip_port()
-    init_routes(app)
-    
-    # Start directory watcher if available
-    if watch_print_directory:
-        try:
-            watcher_thread = threading.Thread(target=watch_print_directory, daemon=True)
-            watcher_thread.start()
-            logger.info("Started directory watcher thread")
-        except Exception as e:
-            logger.error(f"Failed to start directory watcher: {str(e)}")
-    
-    app.run(host='0.0.0.0', port=5001)
+    logger.info("Starting Flask application")
+    try:
+        ensure_history_file()
+        resolve_usb_conflicts()
+        defaults = load_default_settings()
+        app.config['DEFAULTS'] = defaults
+        check_and_update_ip_port()
+        init_routes(app)
+        
+        # Start directory watcher if available
+        if watch_print_directory:
+            try:
+                watcher_thread = threading.Thread(target=watch_print_directory, daemon=True)
+                watcher_thread.start()
+                logger.info("Started directory watcher thread")
+            except Exception as e:
+                logger.error(f"Failed to start directory watcher: {str(e)}")
+        
+        app.run(host='0.0.0.0', port=5001)
+    except Exception as e:
+        logger.error(f"Fatal error starting Flask application: {str(e)}")
+        raise
