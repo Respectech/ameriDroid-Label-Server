@@ -1,0 +1,38 @@
+<div>
+    <h2>How to Send Files to the Printer</h2>
+    <p>Using this web interface is not the only way to print automatically. Files on your computer can be copied to this server and will be printed automatically. The instructions on how to do so -- and helpful information -- is included below.</p>
+    <h3>Windows</h3>
+    <h4>Drag-and-drop</h4>
+    <ul>
+	    <li>Open File Explorer</li>
+	    <li>In the address bar type \\1.2.3.4\print and press ENTER (replace 1.2.3.4 with the IP address of the printer, shown at the top of this browser page)</li>
+	    <li>The default username and password are both "label" (lowercase, without the quotes)</li>
+	    <li>Files can be copied to this location</li>
+	    <li>IMPORTANT: Files will be deleted from this directory after printing, so make sure to have a copy of them</li>
+    </ul>
+    <h4>Saving directly</h4>
+    <ul>
+	    <li>From any application, select "Save as", "Save as File", "Save as PDF", "Export as PDF" or similar.</li>
+	    <li>In the address bar, type \\1.2.3.4\print and press ENTER (replace 1.2.3.4 with the IP address of the printer, shown at the top of this browser page)</li>
+	    <li>If prompted for a password, the default username and password are both "label" (lowercase, without the quotes)</li>
+	    <li>The filename doesn't matter - only the extension (.pdf, .jpg, etc.)</li>
+    </ul>
+    <h3>Accepted File Types</h3>
+    <ul>
+	    <li>PDF files, including multi-page. Multi-page PDFs will have pages stacked vertically, one after the other, as one long image.</li>
+	    <li>Many image file types.</li>
+	    <li>If an unsupported file type is saved to this directory, it will be automatically deleted with no action being taken.</li>
+	    <li>NOTE: If the image is wider than tall, it will be rotated and printed with the shorter side scaled to the width of the printer paper, and the height adjusted to retain the aspect ratio.</li>
+	    <li>IMPORTANT: If the image is very short, the width will be expanded to retain the aspect ratio by the same proportion and could result in a very long print. Make sure to force the dimensions of the image to a reasonable number using the "Special Features" listed below.</li>
+    </ul>
+    <h3>Special features</h3>
+    <p>The following can be added to the filename to cause specific behavior when printing the file:</p>
+    <ul>
+	    <li><b>+ws</b> - Does not trim whitespace from around the image/page. If this is not present, whitespace will be trimmed.</li>
+	    <li><b>-gs</b> - Will print in solid colors (black) instead of grayscale. If this is not present, grayscale will be used.</li>
+	    <li><b>|w=123|</b> - Will force the image to be printed 123 pixels wide. The height (if not defined) will automatically be adjusted to retain the aspect ratio.</li>
+	    <li><b>|h=456|</b> - Will force the image to be printed 456 pixels tall. The width (if not defined) will automatically be adjusted to retain the aspect ratio.</li>
+	    <li>NOTE: If the width and height are both specified, the image will be stretched to fit both of those values, and will not retain the aspect ratio.</li>
+	    <li>IMPORTANT: The default behavior of this software is to orient files so they will print in the largest format.</li>
+    </ul>
+</div>

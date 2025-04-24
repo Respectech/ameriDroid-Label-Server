@@ -1,0 +1,402 @@
+// Global functions
+window.printLabel = function() {
+    console.log('printLabel called');
+    try {
+        var form = document.getElementById('labelForm');
+        if (!form) {
+            console.error('labelForm not found');
+            alert('Error: Label form not found');
+            return;
+        }
+        console.log('Form found:', form);
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'action';
+        input.value = 'Print Label';
+        form.appendChild(input);
+        form.action = '/';
+        console.log('Submitting form to / with action=Print Label');
+        form.submit();
+    } catch (error) {
+        console.error('Error in printLabel:', error);
+        alert('Error submitting print request: ' + error.message);
+    }
+};
+
+window.saveTemplate = function() {
+    console.log('saveTemplate called');
+    try {
+        var form = document.getElementById('labelForm');
+        if (!form) {
+            console.error('labelForm not found');
+            alert('Error: Label form not found');
+            return;
+        }
+        // Collect form data
+        var formData = new FormData(form);
+        var config = {};
+        formData.forEach((value, key) => {
+            config[key] = value;
+        });
+        // Get preview image
+        var previewImg = document.querySelector('.preview-wrapper img');
+        var previewSrc = previewImg ? previewImg.src : '';
+        // Open save template modal
+        var saveModal = new bootstrap.Modal(document.getElementById('saveTemplateModal'));
+        // Set hidden inputs
+        document.getElementById('templateConfig').value = JSON.stringify(config);
+        document.getElementById('templatePreview').value = previewSrc;
+        saveModal.show();
+    } catch (error) {
+        console.error('Error in saveTemplate:', error);
+        alert('Error opening save template modal: ' + error.message);
+    }
+};
+
+window.restartWebserver = function() {
+    if (confirm('Are you sure you want to restart the webserver? This will temporarily disrupt access.')) {
+        fetch('/restart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        })
+        .catch(error => {
+            alert('Error restarting webserver: ' + error);
+        });
+    }
+};
+
+window.selectFont = function(fontName, applyToAll) {
+    let currentTextarea = window.currentTextarea;
+    if (applyToAll) {
+        document.querySelectorAll('.font-name').forEach(function(element) {
+            element.textContent = fontName;
+            element.style.fontFamily = fontName;
+            document.getElementById('face' + element.getAttribute('data-textarea')).value = fontName;
+        });
+    } else {
+        var textareaNum = currentTextarea;
+        var fontElement = document.querySelector('.font-name[data-textarea="' + textareaNum + '"]');
+        if (fontElement) {
+            fontElement.textContent = fontName;
+            fontElement.style.fontFamily = fontName;
+            document.getElementById('face' + textareaNum).value = fontName;
+        }
+    }
+    bootstrap.Modal.getInstance(document.getElementById('fontModal')).hide();
+};
+
+// Function to load template into label form
+window.loadTemplate = function(config) {
+    console.log('loadTemplate called with config:', config);
+    try {
+        var form = document.getElementById('labelForm');
+        if (!form) {
+            console.error('labelForm not found');
+            showAlert('Error: Label form not found', 'danger');
+            return;
+        }
+
+        // Reset form to clear existing values
+        form.reset();
+
+        // Populate form fields
+        for (var key in config) {
+            var element = form.elements[key];
+            if (element) {
+                if (element.type === 'checkbox') {
+                    element.checked = config[key] === 'on' || config[key] === true;
+                } else if (element.type === 'radio') {
+                    var radio = form.querySelector(`input[name="${key}"][value="${config[key]}"]`);
+                    if (radio) {
+                        radio.checked = true;
+                    }
+                } else if (element.type === 'select-one') {
+                    element.value = config[key];
+                } else {
+                    element.value = config[key];
+                }
+            }
+        }
+
+        // Update font-name spans for face1, face2, face3
+        ['1', '2', '3'].forEach(num => {
+            var face = config[`face${num}`];
+            if (face) {
+                var fontElement = document.querySelector(`.font-name[data-textarea="${num}"]`);
+                if (fontElement) {
+                    fontElement.textContent = face;
+                    fontElement.style.fontFamily = face;
+                }
+            }
+        });
+
+        // Close the load template modal
+        bootstrap.Modal.getInstance(document.getElementById('loadTemplateModal')).hide();
+        showAlert('Template loaded successfully', 'success');
+    } catch (error) {
+        console.error('Error loading template:', error);
+        showAlert('Error loading template: ' + error.message, 'danger');
+    }
+};
+
+// Function to refresh the template grid
+async function refreshTemplateGrid() {
+    console.log('refreshTemplateGrid called');
+    try {
+        // Add cache-busting parameter
+        const response = await fetch(`/get_templates?t=${new Date().getTime()}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('Templates fetched:', data.templates);
+
+        const templateGrid = document.getElementById('templateGrid');
+        if (!templateGrid) {
+            console.error('templateGrid element not found');
+            showAlert('Error: Template grid element not found', 'danger');
+            return;
+        }
+
+        // Clear the grid
+        templateGrid.innerHTML = '';
+        console.log('Template grid cleared');
+
+        if (data.templates.length === 0) {
+            templateGrid.innerHTML = '<p>No templates found.</p>';
+            console.log('No templates found, displayed message');
+            return;
+        }
+
+        // Render templates
+        data.templates.forEach(template => {
+            console.log('Rendering template:', template.name);
+            const div = document.createElement('div');
+            div.className = 'template-item';
+            div.innerHTML = `
+                <img src="${template.preview_image}" alt="${template.name}" title="${template.name}">
+                <button class="delete-btn" title="Delete Template"><i class="bi bi-trash"></i></button>
+                <p>${template.name}</p>
+            `;
+            // Load template on image click
+            div.querySelector('img').addEventListener('click', () => {
+                console.log('Image clicked for template:', template.name);
+                window.loadTemplate(template.config);
+            });
+            // Delete template on button click
+            div.querySelector('.delete-btn').addEventListener('click', (event) => {
+                console.log('Delete button clicked for template:', template.name);
+                event.stopPropagation(); // Prevent triggering image click
+                window.deleteTemplate(template.name);
+            });
+            templateGrid.appendChild(div);
+        });
+        console.log('Template grid rendering complete, items added:', data.templates.length);
+    } catch (error) {
+        console.error('Error in refreshTemplateGrid:', error);
+        showAlert('Error loading templates: ' + error.message, 'danger');
+        document.getElementById('templateGrid').innerHTML = '<p>Error loading templates.</p>';
+    }
+}
+
+// Function to delete a template
+async function deleteTemplate(templateName) {
+    console.log('deleteTemplate called for:', templateName);
+    if (!confirm(`Are you sure you want to delete the template "${templateName}"? This cannot be undone.`)) {
+        console.log('Deletion canceled for:', templateName);
+        return;
+    }
+    try {
+        // Temporarily remove the template item for immediate feedback
+        const templateItems = document.querySelectorAll(`.template-item p`);
+        templateItems.forEach(item => {
+            if (item.textContent === templateName) {
+                item.parentElement.remove();
+                console.log('Removed template item from DOM:', templateName);
+            }
+        });
+
+        const formData = new FormData();
+        formData.append('template_name', templateName);
+        const response = await fetch('/delete_template', {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message);
+        }
+        const data = await response.json();
+        console.log('Delete response:', data);
+
+        showAlert(data.message, 'success');
+        console.log('Success alert shown for deletion:', templateName);
+
+        // Refresh the template grid
+        await refreshTemplateGrid();
+        console.log('Grid refresh triggered after deletion');
+    } catch (error) {
+        console.error('Error in deleteTemplate:', error);
+        showAlert('Error: ' + error.message, 'danger');
+        // Re-render grid to ensure consistency
+        await refreshTemplateGrid();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM content loaded');
+
+    // Printer status check
+    function checkPrinterStatus() {
+        console.log('Checking printer status');
+        fetch('/printer_status')
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                const statusElement = document.getElementById('printerStatus');
+                if (data.online) {
+                    statusElement.textContent = 'Printer: Online';
+                    statusElement.classList.remove('offline');
+                    statusElement.classList.add('online');
+                } else {
+                    statusElement.textContent = 'Printer: Offline';
+                    statusElement.classList.remove('online');
+                    statusElement.classList.add('offline');
+                }
+                console.log('Printer status updated:', data.online ? 'Online' : 'Offline');
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    console.log('Printer status check aborted');
+                } else {
+                    console.error('Error checking printer status:', error);
+                    const statusElement = document.getElementById('printerStatus');
+                    statusElement.textContent = 'Printer: Error';
+                    statusElement.classList.remove('online');
+                    statusElement.classList.add('offline');
+                }
+            });
+    }
+
+    // Initial check and periodic updates
+    checkPrinterStatus();
+    setInterval(checkPrinterStatus, 5000);
+
+    // Font selection setup
+    window.currentTextarea = null;
+    document.querySelectorAll('.font-name').forEach(function(element) {
+        element.addEventListener('click', function() {
+            window.currentTextarea = this.getAttribute('data-textarea');
+            console.log('Font name clicked, textarea:', window.currentTextarea);
+        });
+    });
+
+    // Save template form submission with AJAX
+    document.getElementById('saveTemplateForm')?.addEventListener('submit', async function(event) {
+        event.preventDefault(); // Prevent default form submission
+        console.log('Submitting saveTemplateForm');
+        try {
+            var templateName = document.getElementById('templateName').value;
+            if (!templateName.trim()) {
+                showAlert('Please enter a template name', 'danger');
+                console.log('Empty template name, submission aborted');
+                return;
+            }
+
+            var formData = new FormData(this);
+            const response = await fetch('/save_template', {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message);
+            }
+            const data = await response.json();
+            console.log('Save template response:', data);
+
+            showAlert(data.message, 'success');
+            // Close the modal on success
+            bootstrap.Modal.getInstance(document.getElementById('saveTemplateModal')).hide();
+            console.log('Save template modal closed');
+        } catch (error) {
+            console.error('Error submitting saveTemplateForm:', error);
+            showAlert('Error saving template: ' + error.message, 'danger');
+        }
+    });
+
+    // Ensure Save Template modal appears above Print Preview modal
+    var saveTemplateModal = document.getElementById('saveTemplateModal');
+    saveTemplateModal.addEventListener('show.bs.modal', function () {
+        // Set z-index for modal and backdrop
+        this.style.zIndex = 1060;
+        var backdrop = document.querySelector('.modal-backdrop.show');
+        if (backdrop) {
+            backdrop.style.zIndex = 1055;
+        }
+        console.log('Save template modal shown, z-index set');
+    });
+    saveTemplateModal.addEventListener('hidden.bs.modal', function () {
+        // Reset z-index when modal is hidden
+        this.style.zIndex = '';
+        var backdrop = document.querySelector('.modal-backdrop.show');
+        if (backdrop) {
+            backdrop.style.zIndex = '';
+        }
+        console.log('Save template modal hidden, z-index reset');
+    });
+
+    // Load Template modal setup
+    var loadTemplateModal = document.getElementById('loadTemplateModal');
+    loadTemplateModal.addEventListener('show.bs.modal', function () {
+        // Set z-index for modal and backdrop
+        this.style.zIndex = 1060;
+        var backdrop = document.querySelector('.modal-backdrop.show');
+        if (backdrop) {
+            backdrop.style.zIndex = 1055;
+        }
+        console.log('Load template modal shown, z-index set');
+
+        // Refresh the template grid
+        refreshTemplateGrid();
+    });
+    loadTemplateModal.addEventListener('hidden.bs.modal', function () {
+        // Reset z-index when modal is hidden
+        this.style.zIndex = '';
+        var backdrop = document.querySelector('.modal-backdrop.show');
+        if (backdrop) {
+            backdrop.style.zIndex = '';
+        }
+        console.log('Load template modal hidden, z-index reset');
+    });
+
+    // Function to show alerts
+    function showAlert(message, type) {
+        console.log(`Showing alert: ${message} (type: ${type})`);
+        var alertContainer = document.getElementById('saveTemplateAlerts');
+        var alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.role = 'alert';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        alertContainer.appendChild(alertDiv);
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.classList.remove('show');
+                alertDiv.classList.add('fade');
+                setTimeout(() => alertDiv.remove(), 150);
+            }
+        }, 5000);
+    }
+});

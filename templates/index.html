@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Label Printer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Add Bootstrap Icons for delete icon -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        .text-area { 
+            width: 100%; 
+            height: 100px; 
+            resize: vertical; 
+        }
+        .options { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px; 
+            align-items: center; 
+        }
+        .preview-wrapper { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            padding: 20px;
+            overflow: visible; 
+        }
+        .preview-wrapper img { 
+            max-width: 100%; 
+            border: 1px solid #ccc; 
+        }
+        .preview-wrapper.rotated { 
+            min-height: 800px;
+            min-width: 1600px;
+        }
+        .preview-wrapper.rotated img { 
+            transform: rotate(90deg); 
+            transform-origin: center center; 
+            max-width: 1400px;
+            max-height: none; 
+        }
+        .textarea1-bg, .textarea3-bg {
+            background-color: #555;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .textarea2-bg {
+            background-color: #666;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        body {
+            background-color: black;
+            color: white;
+            font-size: 16px;
+        }
+        .card {
+            background-color: #333;
+            color: white;
+        }
+        .form-control, .form-select {
+            background-color: #444;
+            color: white;
+            border-color: #666;
+            font-size: 16px;
+            padding: 8px;
+        }
+        .form-check-input:checked {
+            background-color: #007bff;
+        }
+        .font-name {
+            cursor: pointer;
+            padding: 8px;
+            border: 1px solid #666;
+            background-color: #444;
+            display: inline-block;
+            min-width: 120px;
+            font-size: 16px;
+        }
+        .font-list-item {
+            cursor: pointer;
+            padding: 12px;
+            border-bottom: 1px solid #666;
+            font-size: 16px;
+        }
+        .font-list-item:hover {
+            background-color: #555;
+        }
+        .modal-xl-custom {
+            max-width: 90vw;
+            width: 1600px;
+        }
+        .modal-body-preview {
+            max-height: 85vh;
+            overflow-x: auto;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        .dropdown-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+        }
+        .dropdown-menu {
+            background-color: #333;
+            border-color: #666;
+        }
+        .dropdown-item {
+            color: white;
+            font-size: 16px;
+        }
+        .dropdown-item:hover {
+            background-color: #555;
+        }
+        .printer-status {
+            margin-left: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .printer-status.online {
+            color: #28a745; /* Green */
+        }
+        .printer-status.offline {
+            color: #dc3545; /* Red */
+        }
+        .header-container {
+            display: flex;
+            align-items: center;
+        }
+        /* Fix for Save Template modal appearing behind Print Preview modal */
+        #saveTemplateModal {
+            z-index: 1060; /* Higher than default modal z-index (1050) */
+        }
+        #saveTemplateModal .modal-backdrop {
+            z-index: 1055; /* Higher than default backdrop (1040) but below modal */
+        }
+        /* Style for error/success alerts */
+        .alert-container {
+            margin-top: 20px;
+        }
+        /* Styles for Load Template modal */
+        #loadTemplateModal {
+            z-index: 1060; /* Same as saveTemplateModal */
+        }
+        #loadTemplateModal .modal-backdrop {
+            z-index: 1055;
+        }
+        .template-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .template-item {
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative; /* For positioning delete button */
+        }
+        .template-item:hover {
+            transform: scale(1.05);
+        }
+        .template-item img {
+            max-width: 100%;
+            height: 150px;
+            object-fit: contain;
+            border: 1px solid #666;
+            border-radius: 5px;
+        }
+        .template-item p {
+            margin: 10px 0 0;
+            font-size: 14px;
+            word-break: break-word;
+        }
+        .template-item .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            cursor: pointer;
+        }
+        .template-item:hover .delete-btn {
+            opacity: 1;
+        }
+        .template-item .delete-btn:hover {
+            background-color: #dc3545; /* Red on hover */
+        }
+        @media (max-width: 768px) {
+            .options {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .font-name {
+                min-width: 100%;
+                text-align: center;
+            }
+            .modal-xl-custom {
+                max-width: 95%;
+                margin: 10px;
+            }
+            .modal-body-preview {
+                max-height: 70vh;
+            }
+            .preview-wrapper.rotated {
+                min-height: 400px;
+                min-width: 100%;
+            }
+            .preview-wrapper.rotated img {
+                max-width: 90vw;
+            }
+            .form-label {
+                font-size: 14px;
+            }
+            .form-control, .form-select {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .btn {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .row.align-items-center > div {
+                margin-bottom: 10px;
+            }
+            .dropdown-container {
+                top: 5px;
+                right: 5px;
+            }
+            .printer-status {
+                margin-left: 10px;
+                font-size: 16px;
+            }
+            .template-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 10px;
+            }
+            .template-item img {
+                height: 100px;
+            }
+            .template-item .delete-btn {
+                width: 25px;
+                height: 25px;
+                font-size: 14px;
+            }
+        }
+        {% for font in font_families %}
+        @font-face {
+            font-family: '{{ font }}';
+            src: url('/static/fonts/{{ font }}.ttf') format('truetype');
+        }
+        {% endfor %}
+    </style>
+</head>
+<body>
+    <div class="container mt-4 position-relative">
+        <div class="dropdown-container">
+            {% include 'dropdown.html' %}
+        </div>
+        <div class="header-container">
+            <h1 class="mb-4">Print a Label</h1>
+            <span id="printerStatus" class="printer-status">Printer: Checking...</span>
+        </div>
+        <form method="POST" action="/" class="card p-4 shadow-sm" id="labelForm">
+            <div class="row mb-3 textarea1-bg">
+                <div class="col-12 col-md-6">
+                    <textarea id="text1" name="text1" class="form-control text-area" placeholder="Textarea 1 (use [[[text]]] for white, [[text]] for red)">{{ text1|default('') }}</textarea>
+                </div>
+                <div class="col-12 col-md-6 options">
+                    <label class="form-label">Background:</label>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg1_white" name="bg1" value="white" class="form-check-input" {{ 'checked' if bg1 == 'white' else '' }}>
+                        <label for="bg1_white" class="form-check-label">White</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg1_red" name="bg1" value="red" class="form-check-input" {{ 'checked' if bg1 == 'red' else '' }}>
+                        <label for="bg1_red" class="form-check-label">Red</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg1_black" name="bg1" value="black" class="form-check-input" {{ 'checked' if bg1 == 'black' else '' }}>
+                        <label for="bg1_black" class="form-check-label">Black</label>
+                    </div>
+                    <div>
+                        <label for="size1" class="form-label">Size:</label>
+                        <input type="number" id="size1" name="size1" min="6" max="1000" value="{{ size1|default(48) }}" class="form-control d-inline-block" style="width: 80px;">
+                    </div>
+                    <div>
+                        <label class="form-label">Face:</label>
+                        <span class="font-name" data-bs-toggle="modal" data-bs-target="#fontModal" data-textarea="1" style="font-family: '{{ face1|default('DejaVuSans') }}';">{{ face1|default('DejaVuSans') }}</span>
+                        <input type="hidden" id="face1" name="face1" value="{{ face1|default('DejaVuSans') }}">
+                    </div>
+                    <div>
+                        <label for="justify1" class="form-label">Justify:</label>
+                        <select id="justify1" name="justify1" class="form-select d-inline-block" style="width: 100px;">
+                            <option value="left" {{ 'selected' if justify1 == 'left' else '' }}>Left</option>
+                            <option value="center" {{ 'selected' if justify1 == 'center' else '' }}>Center</option>
+                            <option value="right" {{ 'selected' if justify1 == 'right' else '' }}>Right</option>
+                        </select>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="bold1" name="bold1" class="form-check-input" {{ 'checked' if bold1 else '' }}>
+                        <label for="bold1" class="form-check-label">Bold</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="italic1" name="italic1" class="form-check-input" {{ 'checked' if italic1 else '' }}>
+                        <label for="italic1" class="form-check-label">Italic</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="underline1" name="underline1" class="form-check-input" {{ 'checked' if underline1 else '' }}>
+                        <label for="underline1" class="form-check-label">Underline</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <div class="col-12 col-md-2">
+                    <label for="spacing1" class="form-label mb-0">Spacing (pixels):</label>
+                </div>
+                <div class="col-12 col-md-2">
+                    <input type="number" id="spacing1" name="spacing1" value="{{ spacing1|default(10) }}" class="form-control" style="width: 100px;" placeholder="0 for no spacing">
+                </div>
+            </div>
+
+            <div class="row mb-3 textarea2-bg">
+                <div class="col-12 col-md-6">
+                    <textarea id="text2" name="text2" class="form-control text-area" placeholder="Textarea 2 (use [[[text]]] for white, [[text]] for red)">{{ text2|default('') }}</textarea>
+                </div>
+                <div class="col-12 col-md-6 options">
+                    <label class="form-label">Background:</label>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg2_white" name="bg2" value="white" class="form-check-input" {{ 'checked' if bg2 == 'white' else '' }}>
+                        <label for="bg2_white" class="form-check-label">White</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg2_red" name="bg2" value="red" class="form-check-input" {{ 'checked' if bg2 == 'red' else '' }}>
+                        <label for="bg2_red" class="form-check-label">Red</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg2_black" name="bg2" value="black" class="form-check-input" {{ 'checked' if bg2 == 'black' else '' }}>
+                        <label for="bg2_black" class="form-check-label">Black</label>
+                    </div>
+                    <div>
+                        <label for="size2" class="form-label">Size:</label>
+                        <input type="number" id="size2" name="size2" min="6" max="1000" value="{{ size2|default(48) }}" class="form-control d-inline-block" style="width: 80px;">
+                    </div>
+                    <div>
+                        <label class="form-label">Face:</label>
+                        <span class="font-name" data-bs-toggle="modal" data-bs-target="#fontModal" data-textarea="2" style="font-family: '{{ face2|default('DejaVuSans') }}';">{{ face2|default('DejaVuSans') }}</span>
+                        <input type="hidden" id="face2" name="face2" value="{{ face2|default('DejaVuSans') }}">
+                    </div>
+                    <div>
+                        <label for="justify2" class="form-label">Justify:</label>
+                        <select id="justify2" name="justify2" class="form-select d-inline-block" style="width: 100px;">
+                            <option value="left" {{ 'selected' if justify2 == 'left' else '' }}>Left</option>
+                            <option value="center" {{ 'selected' if justify2 == 'center' else '' }}>Center</option>
+                            <option value="right" {{ 'selected' if justify2 == 'right' else '' }}>Right</option>
+                        </select>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="bold2" name="bold2" class="form-check-input" {{ 'checked' if bold2 else '' }}>
+                        <label for="bold2" class="form-check-label">Bold</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="italic2" name="italic2" class="form-check-input" {{ 'checked' if italic2 else '' }}>
+                        <label for="italic2" class="form-check-label">Italic</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="underline2" name="underline2" class="form-check-input" {{ 'checked' if underline2 else '' }}>
+                        <label for="underline2" class="form-check-label">Underline</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-3 align-items-center">
+                <div class="col-12 col-md-2">
+                    <label for="spacing2" class="form-label mb-0">Spacing (pixels):</label>
+                </div>
+                <div class="col-12 col-md-2">
+                    <input type="number" id="spacing2" name="spacing2" value="{{ spacing2|default(10) }}" class="form-control" style="width: 100px;" placeholder="0 for no spacing">
+                </div>
+            </div>
+
+            <div class="row mb-3 textarea3-bg">
+                <div class="col-12 col-md-6">
+                    <textarea id="text3" name="text3" class="form-control text-area" placeholder="Textarea 3 (use [[[text]]] for white, [[text]] for red)">{{ text3|default('') }}</textarea>
+                </div>
+                <div class="col-12 col-md-6 options">
+                    <label class="form-label">Background:</label>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg3_white" name="bg3" value="white" class="form-check-input" {{ 'checked' if bg3 == 'white' else '' }}>
+                        <label for="bg3_white" class="form-check-label">White</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg3_red" name="bg3" value="red" class="form-check-input" {{ 'checked' if bg3 == 'red' else '' }}>
+                        <label for="bg3_red" class="form-check-label">Red</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="radio" id="bg3_black" name="bg3" value="black" class="form-check-input" {{ 'checked' if bg3 == 'black' else '' }}>
+                        <label for="bg3_black" class="form-check-label">Black</label>
+                    </div>
+                    <div>
+                        <label for="size3" class="form-label">Size:</label>
+                        <input type="number" id="size3" name="size3" min="6" max="1000" value="{{ size3|default(48) }}" class="form-control d-inline-block" style="width: 80px;">
+                    </div>
+                    <div>
+                        <label class="form-label">Face:</label>
+                        <span class="font-name" data-bs-toggle="modal" data-bs-target="#fontModal" data-textarea="3" style="font-family: '{{ face3|default('DejaVuSans') }}';">{{ face3|default('DejaVuSans') }}</span>
+                        <input type="hidden" id="face3" name="face3" value="{{ face3|default('DejaVuSans') }}">
+                    </div>
+                    <div>
+                        <label for="justify3" class="form-label">Justify:</label>
+                        <select id="justify3" name="justify3" class="form-select d-inline-block" style="width: 100px;">
+                            <option value="left" {{ 'selected' if justify3 == 'left' else '' }}>Left</option>
+                            <option value="center" {{ 'selected' if justify3 == 'center' else '' }}>Center</option>
+                            <option value="right" {{ 'selected' if justify3 == 'right' else '' }}>Right</option>
+                        </select>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="bold3" name="bold3" class="form-check-input" {{ 'checked' if bold3 else '' }}>
+                        <label for="bold3" class="form-check-label">Bold</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="italic3" name="italic3" class="form-check-input" {{ 'checked' if italic3 else '' }}>
+                        <label for="italic3" class="form-check-label">Italic</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input type="checkbox" id="underline3" name="underline3" class="form-check-input" {{ 'checked' if underline3 else '' }}>
+                        <label for="underline3" class="form-check-label">Underline</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-12 col-md-4">
+                    <label for="length" class="form-label">Label Length (mm):</label>
+                    <input type="number" id="length" name="length" min="1" max="1000" value="{{ length_mm|default(100) }}" class="form-control" required>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label for="orientation" class="form-label">Orientation:</label>
+                    <select id="orientation" name="orientation" class="form-select">
+                        <option value="standard" {{ 'selected' if orientation == 'standard' else '' }}>Standard (Unrotated)</option>
+                        <option value="rotated" {{ 'selected' if orientation == 'rotated' else '' }}>Rotated (90°)</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label for="tape_type" class="form-label">Tape Type:</label>
+                    <select id="tape_type" name="tape_type" class="form-select">
+                        <option value="red_black" {{ 'selected' if tape_type == 'red_black' else '' }}>Red/Black on White (DK-22251)</option>
+                        <option value="black" {{ 'selected' if tape_type == 'black' else '' }}>Black on White (DK-22205)</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-end">
+                    <input type="submit" name="action" value="Save as Default" formaction="/save_defaults" class="btn btn-info w-100">
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-column flex-md-row">
+                <input type="submit" name="action" value="Preview Label" formaction="/preview" class="btn btn-success">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#loadTemplateModal">Load Template</button>
+            </div>
+        </form>
+
+        <h2 class="mt-4">Reprint Past Labels</h2>
+        <form method="POST" action="/reprint" class="card p-4 shadow-sm">
+            <div class="row">
+                <div class="col-12 col-md-10">
+                    <select name="label_id" class="form-select">
+                        {% for label in history|reverse %}
+                            <option value="{{ loop.index0 }}">{{ label.timestamp }} - {{ '{' + label.get('text1', '')[:20] + '}' }} {{ '{' + label.get('text2', '')[:20] + '}' }} {{ '{' + label.get('text3', '')[:20] + '}' }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-end">
+                    <input type="submit" value="Load Label" class="btn btn-info w-100">
+                </div>
+            </div>
+        </form>
+
+        <h2 class="mt-4">Print Custom QR Code</h2>
+        <form method="POST" action="/print_qr_custom" class="card p-4 shadow-sm">
+            <div class="row">
+                <div class="col-12 col-md-8">
+                    <input type="text" id="qr_text" name="qr_text" class="form-control" placeholder="Enter text or URL for QR code" value="{{ qr_text|default('') }}">
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-center">
+                    <div class="form-check">
+                        <input type="checkbox" id="exclude_text" name="exclude_text" class="form-check-input" {{ 'checked' if exclude_text else '' }}>
+                        <label for="exclude_text" class="form-check-label">Exclude Text</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-end">
+                    <input type="submit" name="action" value="Print QR Code" class="btn btn-success w-100">
+                </div>
+            </div>
+        </form>
+
+        {% if message %}
+            <div class="alert {{ 'alert-success' if 'successfully' in message else 'alert-danger' }} mt-3" role="alert">
+                {{ message }}
+            </div>
+        {% endif %}
+
+        <!-- Container for save template alerts -->
+        <div class="alert-container" id="saveTemplateAlerts"></div>
+
+        <!-- Font Selection Modal -->
+        <div class="modal fade" id="fontModal" tabindex="-1" aria-labelledby="fontModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="fontModalLabel">Select Font</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-check mb-3">
+                            <input type="checkbox" id="applyToAll" class="form-check-input">
+                            <label for="applyToAll" class="form-check-label">Apply to all textareas</label>
+                        </div>
+                        {% for font in font_families %}
+                            <div class="font-list-item" onclick="window.selectFont('{{ font }}', this.parentElement.parentElement.parentElement.querySelector('#applyToAll').checked)" style="font-family: '{{ font }}';">{{ font }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sending Files Modal -->
+        <div class="modal fade" id="sendingFilesModal" tabindex="-1" aria-labelledby="sendingFilesModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl-custom">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="sendingFilesModalLabel">Sending Files to Printer</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body modal-body-preview">
+                        {% include 'howto-sendingfiles.html' %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Managing Fonts Modal -->
+        <div class="modal fade" id="managingFontsModal" tabindex="-1" aria-labelledby="managingFontsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl-custom">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="managingFontsModalLabel">Managing Fonts</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body modal-body-preview">
+                        {% include 'howto-managingfonts.html' %}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Template Modal -->
+        <div class="modal fade" id="saveTemplateModal" tabindex="-1" aria-labelledby="saveTemplateModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="saveTemplateModalLabel">Save Template</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="saveTemplateForm" method="POST" action="/save_template">
+                            <div class="mb-3">
+                                <label for="templateName" class="form-label">Template Name:</label>
+                                <input type="text" id="templateName" name="template_name" class="form-control" placeholder="Enter template name" required>
+                            </div>
+                            <input type="hidden" id="templateConfig" name="template_config">
+                            <input type="hidden" id="templatePreview" name="template_preview">
+                            <button type="submit" class="btn btn-primary">Save</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Load Template Modal -->
+        <div class="modal fade" id="loadTemplateModal" tabindex="-1" aria-labelledby="loadTemplateModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl-custom">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="loadTemplateModalLabel">Load Template</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="template-grid" id="templateGrid">
+                            <!-- Templates will be populated here via JavaScript -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if preview_image %}
+        <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl-custom">
+                <div class="modal-content" style="background-color: #333; color: white;">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="previewModalLabel">Label Preview</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body modal-body-preview">
+                        <div class="preview-wrapper {{ 'rotated' if orientation == 'rotated' else '' }}">
+                            <img src="data:image/png;base64,{{ preview_image }}" alt="Label Preview" class="img-fluid">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-success" onclick="window.saveTemplate()">Save Template</button>
+                        <button type="button" class="btn btn-primary" onclick="window.printLabel()">Print Label</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            // Inline script for Jinja2-dependent preview modal
+            document.addEventListener('DOMContentLoaded', function() {
+                var previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+                previewModal.show();
+                console.log('Preview modal shown');
+            });
+        </script>
+        {% endif %}
+
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+    <script src="/static/js/scripts.js"></script>
+</body>
+</html>

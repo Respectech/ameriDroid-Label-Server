@@ -1,0 +1,1 @@
+{"length_mm": 20, "orientation": "standard", "tape_type": "black"}
