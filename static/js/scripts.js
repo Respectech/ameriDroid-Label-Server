@@ -54,6 +54,7 @@ window.saveTemplate = function() {
 };
 
 window.restartWebserver = function() {
+    console.log('restartWebserver called');
     if (confirm('Are you sure you want to restart the webserver? This will temporarily disrupt access.')) {
         fetch('/restart', {
             method: 'POST',
@@ -71,7 +72,49 @@ window.restartWebserver = function() {
     }
 };
 
+window.updateCodebase = function() {
+    console.log('updateCodebase called');
+    try {
+        if (!confirm('Are you sure you want to update the codebase to the latest version? The server will restart, and this may take a few seconds.')) {
+            console.log('Update canceled');
+            return;
+        }
+        console.log('Sending POST to /update_codebase');
+        fetch('/update_codebase', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            console.log('Received response from /update_codebase:', response);
+            if (!response.ok) {
+                return response.json().then(err => { 
+                    console.error('Error response:', err);
+                    throw new Error(err.message || 'Unknown server error'); 
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Update response:', data);
+            showAlert(data.message, 'success');
+            console.log('Success alert triggered:', data.message);
+        })
+        .catch(error => {
+            console.error('Error in updateCodebase:', error);
+            showAlert('Error updating codebase: ' + error.message, 'danger');
+            console.log('Error alert triggered:', error.message);
+        });
+    } catch (error) {
+        console.error('Unexpected error in updateCodebase:', error);
+        showAlert('Unexpected error updating codebase: ' + error.message, 'danger');
+        console.log('Unexpected error alert triggered:', error.message);
+    }
+};
+
 window.selectFont = function(fontName, applyToAll) {
+    console.log('selectFont called with:', fontName, applyToAll);
     let currentTextarea = window.currentTextarea;
     if (applyToAll) {
         document.querySelectorAll('.font-name').forEach(function(element) {
@@ -83,8 +126,8 @@ window.selectFont = function(fontName, applyToAll) {
         var textareaNum = currentTextarea;
         var fontElement = document.querySelector('.font-name[data-textarea="' + textareaNum + '"]');
         if (fontElement) {
-            fontElement.textContent = fontName;
-            fontElement.style.fontFamily = fontName;
+            element.textContent = fontName;
+            element.style.fontFamily = fontName;
             document.getElementById('face' + textareaNum).value = fontName;
         }
     }
@@ -236,7 +279,7 @@ async function deleteTemplate(templateName) {
         console.log('Delete response:', data);
 
         showAlert(data.message, 'success');
-        console.log('Success alert shown for deletion:', templateName);
+        console.log('Success alert triggered for deletion:', templateName);
 
         // Refresh the template grid
         await refreshTemplateGrid();
@@ -380,23 +423,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to show alerts
     function showAlert(message, type) {
-        console.log(`Showing alert: ${message} (type: ${type})`);
-        var alertContainer = document.getElementById('saveTemplateAlerts');
-        var alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.role = 'alert';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        alertContainer.appendChild(alertDiv);
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            if (alertDiv.parentNode) {
-                alertDiv.classList.remove('show');
-                alertDiv.classList.add('fade');
-                setTimeout(() => alertDiv.remove(), 150);
+        console.log(`Attempting to show alert: ${message} (type: ${type})`);
+        try {
+            var alertContainer = document.getElementById('saveTemplateAlerts');
+            if (!alertContainer) {
+                console.error('Alert container not found (#saveTemplateAlerts)');
+                alert('Error: Alert container not found - ' + message);
+                return;
             }
-        }, 5000);
+            console.log('Alert container found:', alertContainer);
+            var alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.role = 'alert';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            alertContainer.appendChild(alertDiv);
+            console.log('Alert appended to container:', alertDiv);
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.classList.remove('show');
+                    alertDiv.classList.add('fade');
+                    setTimeout(() => {
+                        if (alertDiv.parentNode) {
+                            alertDiv.remove();
+                            console.log('Alert removed after timeout');
+                        }
+                    }, 150);
+                }
+            }, 5000);
+        } catch (error) {
+            console.error('Error in showAlert:', error);
+            alert('Failed to show alert: ' + message);
+        }
     }
 });
