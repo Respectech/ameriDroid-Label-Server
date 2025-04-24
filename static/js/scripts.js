@@ -65,6 +65,13 @@ window.restartWebserver = function() {
         .then(response => response.json())
         .then(data => {
             alert(data.message);
+            // Check for reload or redirect instruction
+            if (data.reload || data.redirect) {
+                console.log('Reloading page after restart');
+                setTimeout(() => {
+                    window.location.href = data.redirect || '/';
+                }, 3000); // Delay to allow server restart
+            }
         })
         .catch(error => {
             alert('Error restarting webserver: ' + error);
@@ -105,11 +112,18 @@ window.updateCodebase = function() {
             console.log('Update response:', data);
             showAlert(data.message, 'success');
             console.log('Success alert triggered:', data.message);
+            // Check for reload or redirect instruction
+            if (data.reload || data.redirect) {
+                console.log('Reloading page after codebase update');
+                setTimeout(() => {
+                    window.location.href = data.redirect || '/';
+                }, 3000); // Delay to allow server restart
+            }
         })
         .catch(error => {
             console.error('Error in updateCodebase:', error);
             try {
-                showAlert('Error updating codebase: ' + error.message, 'danger');
+                showAlert('Error updating codebaseidunt: ' + error.message, 'danger');
                 console.log('Error alert triggered:', error.message);
             } catch (alertError) {
                 console.error('Failed to show alert:', alertError);
@@ -172,7 +186,9 @@ window.loadTemplate = function(config) {
                 } else if (element.type === 'radio') {
                     var radio = form.querySelector(`input[name="${key}"][value="${config[key]}"]`);
                     if (radio) {
-                        radio.checked = true;
+                        radio
+
+.checked = true;
                     }
                 } else if (element.type === 'select-one') {
                     element.value = config[key];
@@ -337,7 +353,7 @@ function showAlert(message, type) {
                         alertDiv.remove();
                         console.log('Alert removed after timeout');
                     }
-                }, 150);
+        }, 150);
             }
         }, 5000);
     } catch (error) {
