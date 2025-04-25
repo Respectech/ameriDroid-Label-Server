@@ -35,6 +35,7 @@ def print_label(text1, text2, text3, length_mm, size1, size2, size3, face1, face
         print_cmd.append("--red")
     print_cmd.append(img_path)
 
+    result = None
     for attempt in range(3):
         try:
             logger.debug(f"Executing print (attempt {attempt + 1}/3): {' '.join(print_cmd)}")
@@ -68,10 +69,19 @@ def print_label(text1, text2, text3, length_mm, size1, size2, size3, face1, face
                 break
     else:
         logger.error("Failed to print label after 3 attempts")
-        return None
+        os.remove(img_path)
+        return {'status': 'error', 'message': 'Failed to print label after 3 attempts'}
+
+    # Filter out deprecation warning from stderr
+    cleaned_output = []
+    if result:
+        for line in result.stderr.splitlines():
+            if "deprecation warning" not in line.lower():
+                cleaned_output.append(line)
+    cleaned_message = "\n".join(cleaned_output) if cleaned_output else "Printing was successful."
 
     os.remove(img_path)
-    return result
+    return {'status': 'success', 'message': cleaned_message}
 
 def print_qr_code(url, exclude_text=False):
     from label_printer.image import generate_qr_code_image
