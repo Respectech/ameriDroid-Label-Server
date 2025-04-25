@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Install script for ameriDroid-Label-Server on ODROID-C4 with Ubuntu
-# Installs prerequisites system-wide, clones GitHub repo, and configures systemd service
-# Runs natively without a Python virtual environment
+# Installs prerequisites system-wide, clones GitHub repo, configures WiFi access point and Ethernet,
+# and sets up systemd service. Runs natively without a Python virtual environment.
 
 # Configuration variables
 REPO_URL="https://github.com/Respectech/ameriDroid-Label-Server.git"
@@ -10,6 +10,10 @@ INSTALL_DIR="/home/odroid/label_printer_web"
 PYTHON_EXEC="/usr/bin/python3.8"
 SERVICE_NAME="label-printer"
 LOG_FILE="/home/odroid/install_label_printer.log"
+WIFI_SSID="LabelPrinter"
+WIFI_PASS="printer123"
+WIFI_IFACE="wlan0"
+WIFI_IP="192.168.4.1"
 
 # Ensure script is run with sudo
 if [[ $EUID -ne 0 ]]; then
@@ -39,6 +43,8 @@ apt install -y \
     libfreetype6-dev libjpeg-dev zlib1g-dev \
     python3-pyusb \
     python3-packaging \
+    hostapd \
+    dnsmasq \
     || {
     echo "Failed to install system dependencies" | tee -a "$LOG_FILE"
     exit 1
@@ -97,6 +103,82 @@ else
     }
 fi
 
+# Configure WiFi access point
+echo "Configuring WiFi access point on $WIFI_IFACE..."
+# Set static IP for wlan0
+mkdir -p /etc/network/interfaces.d
+cat > /etc/network/interfaces.d/$WIFI_IFACE <<EOF
+auto $WIFI_IFACE
+iface $WIFI_IFACE inet static
+    address $WIFI_IP
+    netmask 255.255.255.0
+EOF
+
+# Ensure eth0 uses DHCP
+cat > /etc/network/interfaces.d/eth0 <<EOF
+auto eth0
+iface eth0 inet dhcp
+EOF
+
+# Configure hostapd
+cat > /etc/hostapd/hostapd.conf <<EOF
+interface=$WIFI_IFACE
+driver=nl80211
+ssid=$WIFI_SSID
+hw_mode=g
+channel=6
+macaddr_acl=0
+auth_algs=1
+ignore_broadcast_ssid=0
+wpa=2
+wpa_passphrase=$WIFI_PASS
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
+EOF
+echo "DAEMON_CONF=/etc/hostapd/hostapd.conf" | tee -a /etc/default/hostapd
+
+# Configure dnsmasq
+cat > /etc/dnsmasq.conf <<EOF
+interface=$WIFI_IFACE
+dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,12h
+EOF
+
+# Configure Network Manager to ignore wlan0
+if [ -f /etc/NetworkManager/NetworkManager.conf ]; then
+    echo "Configuring Network Manager to ignore $WIFI_IFACE..."
+    cat > /etc/NetworkManager/NetworkManager.conf <<EOF
+[main]
+plugins=ifupdown,keyfile
+
+[ifupdown]
+managed=false
+
+[keyfile]
+unmanaged-devices=interface-name:$WIFI_IFACE
+EOF
+    systemctl restart NetworkManager || {
+        echo "Failed to restart NetworkManager" | tee -a "$LOG_FILE"
+        exit 1
+    }
+fi
+
+# Disable IP forwarding
+echo "Disabling IP forwarding for standalone WiFi AP..."
+sysctl -w net.ipv4.ip_forward=0
+
+# Enable and start hostapd and dnsmasq
+echo "Enabling and starting hostapd and dnsmasq services..."
+systemctl unmask hostapd
+systemctl enable hostapd dnsmasq || {
+    echo "Failed to enable hostapd or dnsmasq" | tee -a "$LOG_FILE"
+    exit 1
+}
+systemctl start hostapd dnsmasq || {
+    echo "Failed to start hostapd or dnsmasq" | tee -a "$LOG_FILE"
+    exit 1
+}
+
 # Create systemd service file
 echo "Creating systemd service..."
 cat > /etc/systemd/system/$SERVICE_NAME.service <<EOF
@@ -142,9 +224,21 @@ else
     echo "Service $SERVICE_NAME failed to start, check logs with: journalctl -u $SERVICE_NAME" | tee -a "$LOG_FILE"
     exit 1
 fi
+if systemctl is-active --quiet hostapd && systemctl is-active --quiet dnsmasq; then
+    echo "WiFi access point services are running" | tee -a "$LOG_FILE"
+else
+    echo "WiFi access point services failed to start, check logs with: journalctl -u hostapd -u dnsmasq" | tee -a "$LOG_FILE"
+    exit 1
+fi
+if ip addr show eth0 | grep -q "inet "; then
+    echo "Ethernet interface eth0 is configured" | tee -a "$LOG_FILE"
+else
+    echo "Ethernet interface eth0 not configured, check network settings" | tee -a "$LOG_FILE"
+fi
 
 # Print completion message
 echo "Installation completed successfully at $(date)" | tee -a "$LOG_FILE"
-echo "Access the web interface at http://$(hostname -I | awk '{print $1}'):5001"
+echo "Connect your phone to WiFi network '$WIFI_SSID' with password '$WIFI_PASS' and access at http://$WIFI_IP:5001"
+echo "On Ethernet, access at http://$(ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1):5001"
 echo "Logs are available at $LOG_FILE"
 echo "Reboot the system to ensure all changes take effect: sudo reboot"
