@@ -10,6 +10,18 @@ import os
 import json
 import time
 
+from flask import render_template, request
+from label_printer.config import logger
+from label_printer.history import load_history, save_history
+from label_printer.fonts import font_families, get_font_path
+from label_printer.printing import print_label, print_qr_code
+from label_printer.image import generate_label_image
+from label_printer.utils import resolve_usb_conflicts
+from datetime import datetime
+import os
+import json
+import time
+
 def init_routes(app):
     @app.route('/', methods=['GET', 'POST'])
     def print_new_label():
@@ -50,6 +62,16 @@ def init_routes(app):
 
                 result = print_label(text1, text2, text3, length_mm, size1, size2, size3, face1, face2, face3, bold1, bold2, bold3, italic1, italic2, italic3, underline1, underline2, underline3, bg1, bg2, bg3, orientation, tape_type, justify1, justify2, justify3, spacing1, spacing2)
 
+                # Handle dictionary response from print_label
+                if isinstance(result, dict):
+                    if result['status'] == 'success':
+                        message = "Label printed successfully!"
+                    else:
+                        message = f"Error: {result['message']}"
+                else:
+                    # Fallback for unexpected result type
+                    message = "Error: Unexpected response from printer"
+
                 entry = {
                     "text1": text1,
                     "text2": text2,
@@ -84,14 +106,13 @@ def init_routes(app):
                 }
                 save_history(entry)
 
-                message = "Label printed successfully!" if "Printing was successful" in result.stdout else f"Error: {result.stderr}"
                 preview_image = generate_label_image(text1, text2, text3, length_mm, size1, size2, size3, face1, face2, face3, bold1, bold2, bold3, italic1, italic2, italic3, underline1, underline2, underline3, bg1, bg2, bg3, orientation, tape_type, justify1, justify2, justify3, spacing1, spacing2)
                 return render_template('index.html', message=message, history=load_history(), font_families=sorted(font_families.keys()), preview_image=preview_image, **entry)
             except Exception as e:
                 logger.error(f"Error processing form: {str(e)}")
                 return render_template('index.html', message=f"Error: {str(e)}", history=load_history(), font_families=sorted(font_families.keys()), **form_data), 400
         return render_template('index.html', history=load_history(), font_families=sorted(font_families.keys()), **form_data)
-
+    
     @app.route('/preview', methods=['POST'])
     def preview_label():
         defaults = app.config.get('DEFAULTS', {})
