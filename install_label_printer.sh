@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Install script for ameriDroid-Label-Server on ODROID-C4 with Ubuntu
+# Install script for ameriDroid-Label-Server on ODROID-C4 with Ubuntu 20.04
 # Installs prerequisites system-wide, clones GitHub repo, configures WiFi access point and Ethernet,
-# and sets up systemd service. Runs natively without a Python virtual environment.
+# fixes ODROID repository, and sets up systemd service. Runs natively without a virtual environment.
 
 # Configuration variables
 REPO_URL="https://github.com/Respectech/ameriDroid-Label-Server.git"
@@ -25,10 +25,31 @@ fi
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Starting installation at $(date)"
 
-# Update package lists and upgrade system
+# Fix ODROID repository configuration
+echo "Fixing ODROID repository configuration..."
+if [ -f /etc/apt/sources.list.d/odroid.list ]; then
+    sudo sed -i 's/bionic/focal/g' /etc/apt/sources.list.d/odroid.list
+    echo "Updated /etc/apt/sources.list.d/odroid.list to use focal" | tee -a "$LOG_FILE"
+else
+    echo "deb http://deb.odroid.in/c4 focal main" | sudo tee /etc/apt/sources.list.d/odroid.list
+    echo "Created /etc/apt/sources.list.d/odroid.list with focal" | tee -a "$LOG_FILE"
+fi
+# Add Hardkernel PPA
+echo "Adding Hardkernel PPA..."
+echo "deb http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7A20836B || {
+    echo "Failed to add Hardkernel PPA key" | tee -a "$LOG_FILE"
+    exit 1
+}
+
+# Update package lists
 echo "Updating system packages..."
-apt update -y && apt full-upgrade -y || {
+apt update -y || {
     echo "Failed to update packages" | tee -a "$LOG_FILE"
+    exit 1
+}
+apt full-upgrade -y || {
+    echo "Failed to upgrade packages" | tee -a "$LOG_FILE"
     exit 1
 }
 
@@ -136,7 +157,7 @@ wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
-echo "DAEMON_CONF=/etc/hostapd/hostapd.conf" | tee -a /etc/default/hostapd
+echo "DAEMON_CONF=/etc/hostapd/hostapd.conf" | sudo tee -a /etc/default/hostapd
 
 # Configure dnsmasq
 cat > /etc/dnsmasq.conf <<EOF
