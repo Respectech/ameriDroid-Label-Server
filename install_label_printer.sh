@@ -86,13 +86,16 @@ apt install -y \
     fontconfig \
     imagemagick \
     libfreetype6-dev libjpeg-dev zlib1g-dev \
-    python3-pyusb \
+    python3-usb \
     python3-packaging \
     hostapd \
     dnsmasq \
     || {
-    echo "Failed to install system dependencies" | tee -a "$LOG_FILE"
-    exit 1
+    echo "Failed to install system dependencies, attempting pip fallback for pyusb..." | tee -a "$LOG_FILE"
+    "$PYTHON_EXEC" -m pip install pyusb || {
+        echo "Failed to install pyusb via pip" | tee -a "$LOG_FILE"
+        exit 1
+    }
 }
 
 # Upgrade pip system-wide
