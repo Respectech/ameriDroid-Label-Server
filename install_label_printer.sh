@@ -27,26 +27,41 @@ echo "Starting installation at $(date)"
 
 # Fix ODROID repository configuration
 echo "Fixing ODROID repository configuration..."
-if [ -f /etc/apt/sources.list.d/odroid.list ]; then
-    sudo sed -i 's/bionic/focal/g' /etc/apt/sources.list.d/odroid.list
-    echo "Updated /etc/apt/sources.list.d/odroid.list to use focal" | tee -a "$LOG_FILE"
-else
-    echo "deb http://deb.odroid.in/c4 focal main" | sudo tee /etc/apt/sources.list.d/odroid.list
-    echo "Created /etc/apt/sources.list.d/odroid.list with focal" | tee -a "$LOG_FILE"
-fi
+# Remove bionic references and backup files
+for file in /etc/apt/sources.list.d/*.list; do
+    if [ -f "$file" ]; then
+        if grep -q "bionic" "$file"; then
+            sudo rm "$file"
+            echo "Removed $file containing bionic" | tee -a "$LOG_FILE"
+        fi
+    fi
+done
+for file in /etc/apt/sources.list.d/*.list.save; do
+    if [ -f "$file" ]; then
+        sudo rm "$file"
+        echo "Removed backup file $file" | tee -a "$LOG_FILE"
+    fi
+done
+# Ensure odroid.list is correct
+echo "deb http://deb.odroid.in/c4 focal main" | sudo tee /etc/apt/sources.list.d/odroid.list
+echo "Created/updated /etc/apt/sources.list.d/odroid.list" | tee -a "$LOG_FILE"
 
 # Add Hardkernel PPA with multiple keyserver attempts
 echo "Adding Hardkernel PPA..."
 echo "deb http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
-KEY_SERVERS=("keyserver.ubuntu.com" "keys.openpgp.org" "hkp://pool.sks-keyservers.net")
+KEY_SERVERS=("keyserver.ubuntu.com" "keys.openpgp.org" "pgp.mit.edu" "hkp://pool.sks-keyservers.net")
 KEY_ID="7A20836B"
+KEY_IMPORTED=false
 for server in "${KEY_SERVERS[@]}"; do
     echo "Trying keyserver $server for key $KEY_ID..." | tee -a "$LOG_FILE"
-    sudo apt-key adv --keyserver "$server" --recv-keys "$KEY_ID" && break
+    if sudo apt-key adv --keyserver "$server" --recv-keys "$KEY_ID"; then
+        KEY_IMPORTED=true
+        break
+    fi
     echo "Failed to fetch key from $server" | tee -a "$LOG_FILE"
     sleep 2
 done
-if ! apt-key list | grep -q "$KEY_ID"; then
+if ! $KEY_IMPORTED; then
     echo "Warning: Failed to add Hardkernel PPA key, using trusted repository as fallback" | tee -a "$LOG_FILE"
     echo "deb [trusted=yes] http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
 fi
