@@ -117,19 +117,19 @@ fi
 echo "Installing Python dependencies from requirements.txt..."
 cd "$INSTALL_DIR"
 if [ -f "$INSTALL_DIR/requirements.txt" ]; then
-    "$PYTHON_EXEC" -m pip install -r "$INSTALL_DIR/requirements.txt" || {
+    "$PYTHON_EXEC" -m pip install --no-deps --force-reinstall -r "$INSTALL_DIR/requirements.txt" || {
         echo "Failed to install Python packages from requirements.txt" | tee -a "$LOG_FILE"
         exit 1
     }
 else
     echo "requirements.txt not found, installing core packages..."
-    "$PYTHON_EXEC" -m pip install \
+    "$PYTHON_EXEC" -m pip install --no-deps --force-reinstall \
         brother_ql \
         Flask \
         Pillow \
         qrcode \
         PyPDF2 \
-        fontconfig \
+        attrs \
         || {
         echo "Failed to install core Python packages" | tee -a "$LOG_FILE"
         exit 1
