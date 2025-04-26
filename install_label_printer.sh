@@ -46,25 +46,10 @@ done
 echo "deb http://deb.odroid.in/c4 focal main" | sudo tee /etc/apt/sources.list.d/odroid.list
 echo "Created/updated /etc/apt/sources.list.d/odroid.list" | tee -a "$LOG_FILE"
 
-# Add Hardkernel PPA with multiple keyserver attempts
+# Add Hardkernel PPA with trusted fallback
 echo "Adding Hardkernel PPA..."
-echo "deb http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
-KEY_SERVERS=("keyserver.ubuntu.com" "keys.openpgp.org" "pgp.mit.edu" "hkp://pool.sks-keyservers.net")
-KEY_ID="7A20836B"
-KEY_IMPORTED=false
-for server in "${KEY_SERVERS[@]}"; do
-    echo "Trying keyserver $server for key $KEY_ID..." | tee -a "$LOG_FILE"
-    if sudo apt-key adv --keyserver "$server" --recv-keys "$KEY_ID"; then
-        KEY_IMPORTED=true
-        break
-    fi
-    echo "Failed to fetch key from $server" | tee -a "$LOG_FILE"
-    sleep 2
-done
-if ! $KEY_IMPORTED; then
-    echo "Warning: Failed to add Hardkernel PPA key, using trusted repository as fallback" | tee -a "$LOG_FILE"
-    echo "deb [trusted=yes] http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
-fi
+echo "deb [trusted=yes] http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
+echo "Added Hardkernel PPA with trusted=yes" | tee -a "$LOG_FILE"
 
 # Update package lists
 echo "Updating system packages..."
