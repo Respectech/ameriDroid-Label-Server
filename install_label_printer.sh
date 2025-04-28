@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Install script for ameriDroid-Label-Server on ODROID-C4 with Ubuntu 20.04
+# Install script for ameriDroid-Label-Server on ODROID-C4 with Ubuntu 22.04
 # Installs prerequisites system-wide, clones GitHub repo, configures WiFi access point and Ethernet,
 # fixes ODROID repository, and sets up systemd service. Runs natively without a virtual environment.
 
 # Configuration variables
 REPO_URL="https://github.com/Respectech/ameriDroid-Label-Server.git"
 INSTALL_DIR="/home/odroid/label_printer_web"
-PYTHON_EXEC="/usr/bin/python3.8"
+PYTHON_EXEC="/usr/bin/python3"
 SERVICE_NAME="label-printer"
 LOG_FILE="/home/odroid/install_label_printer.log"
 WIFI_SSID="LabelPrinter"
@@ -43,12 +43,12 @@ for file in /etc/apt/sources.list.d/*.list.save; do
     fi
 done
 # Ensure odroid.list is correct
-echo "deb http://deb.odroid.in/c4 focal main" | sudo tee /etc/apt/sources.list.d/odroid.list
+echo "deb http://deb.odroid.in/c4 jammy main" | sudo tee /etc/apt/sources.list.d/odroid.list
 echo "Created/updated /etc/apt/sources.list.d/odroid.list" | tee -a "$LOG_FILE"
 
 # Add Hardkernel PPA with trusted fallback
 echo "Adding Hardkernel PPA..."
-echo "deb [trusted=yes] http://ppa.launchpad.net/hardkernel/ppa/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-focal.list
+echo "deb [trusted=yes] http://ppa.launchpad.net/hardkernel/ppa/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/hardkernel-ubuntu-ppa-jammy.list
 echo "Added Hardkernel PPA with trusted=yes" | tee -a "$LOG_FILE"
 
 # Update package lists
@@ -65,7 +65,7 @@ apt full-upgrade -y || {
 # Install system dependencies
 echo "Installing system dependencies..."
 apt install -y \
-    python3.8 python3.8-dev python3-pip \
+    python3 python3-dev python3-pip \
     git \
     libusb-1.0-0-dev \
     fontconfig \
@@ -75,6 +75,7 @@ apt install -y \
     python3-packaging \
     hostapd \
     dnsmasq \
+    linux-firmware \
     || {
     echo "Failed to install system dependencies, attempting pip fallback for pyusb..." | tee -a "$LOG_FILE"
     "$PYTHON_EXEC" -m pip install pyusb || {
@@ -136,6 +137,22 @@ else
     }
 fi
 
+# Verify WiFi interface
+echo "Verifying WiFi interface $WIFI_IFACE..."
+if ! ip link show "$WIFI_IFACE" &> /dev/null; then
+    echo "Error: WiFi interface $WIFI_IFACE not found. Available interfaces:" | tee -a "$LOG_FILE"
+    ip link show | grep -E '^[0-9]+: ' | awk '{print $2}' | cut -d':' -f1 | tee -a "$LOG_FILE"
+    echo "Please update WIFI_IFACE in the script and re-run." | tee -a "$LOG_FILE"
+    exit 1
+fi
+
+# Check if WiFi dongle supports AP mode
+echo "Checking AP mode support for $WIFI_IFACE..."
+if ! iw list | grep -A 10 "valid interface combinations" | grep -q "* AP"; then
+    echo "Error: WiFi dongle does not support AP mode. Please use a compatible dongle." | tee -a "$LOG_FILE"
+    exit 1
+fi
+
 # Configure WiFi access point
 echo "Configuring WiFi access point on $WIFI_IFACE..."
 # Set static IP for wlan0
@@ -177,9 +194,9 @@ interface=$WIFI_IFACE
 dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,12h
 EOF
 
-# Configure Network Manager to ignore wlan0
+# Configure NetworkManager to ignore wlan0
 if [ -f /etc/NetworkManager/NetworkManager.conf ]; then
-    echo "Configuring Network Manager to ignore $WIFI_IFACE..."
+    echo "Configuring NetworkManager to ignore $WIFI_IFACE..."
     cat > /etc/NetworkManager/NetworkManager.conf <<EOF
 [main]
 plugins=ifupdown,keyfile
@@ -200,6 +217,13 @@ fi
 echo "Disabling IP forwarding for standalone WiFi AP..."
 sysctl -w net.ipv4.ip_forward=0
 
+# Ensure wlan0 is up before starting services
+echo "Bringing up $WIFI_IFACE..."
+ip link set "$WIFI_IFACE" up || {
+    echo "Failed to bring up $WIFI_IFACE" | tee -a "$LOG_FILE"
+    exit 1
+}
+
 # Enable and start hostapd and dnsmasq
 echo "Enabling and starting hostapd and dnsmasq services..."
 systemctl unmask hostapd
@@ -207,8 +231,12 @@ systemctl enable hostapd dnsmasq || {
     echo "Failed to enable hostapd or dnsmasq" | tee -a "$LOG_FILE"
     exit 1
 }
-systemctl start hostapd dnsmasq || {
-    echo "Failed to start hostapd or dnsmasq" | tee -a "$LOG_FILE"
+systemctl start hostapd || {
+    echo "Failed to start hostapd, check logs with: journalctl -u hostapd.service" | tee -a "$LOG_FILE"
+    exit 1
+}
+systemctl start dnsmasq || {
+    echo "Failed to start dnsmasq, check logs with: journalctl -u dnsmasq.service" | tee -a "$LOG_FILE"
     exit 1
 }
 
@@ -260,8 +288,7 @@ fi
 if systemctl is-active --quiet hostapd && systemctl is-active --quiet dnsmasq; then
     echo "WiFi access point services are running" | tee -a "$LOG_FILE"
 else
-    echo "WiFi access point services failed to start, check logs with: journalctl -u hostapd -u dnsmasq" | tee -a "$LOG_FILE"
-    exit 1
+    echo "WiFi access point services not fully running, check logs with: journalctl -u hostapd -u dnsmasq" | tee -a "$LOG_FILE"
 fi
 if ip addr show eth0 | grep -q "inet "; then
     echo "Ethernet interface eth0 is configured" | tee -a "$LOG_FILE"
