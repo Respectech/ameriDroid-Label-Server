@@ -25,6 +25,10 @@ fi
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Starting installation at $(date)"
 
+# Fix hostname resolution warnings
+echo "Fixing hostname resolution..."
+echo "127.0.0.1 odroid" >> /etc/hosts
+
 # Fix ODROID repository configuration
 echo "Fixing ODROID repository configuration..."
 # Remove bionic references and backup files
@@ -159,24 +163,39 @@ if ! grep -A 10 "Supported interface modes" /tmp/iw_list_output.txt | grep -q "A
     exit 1
 fi
 
+# Disable systemd-resolved to free port 53 for dnsmasq
+echo "Disabling systemd-resolved to avoid port 53 conflict..."
+systemctl stop systemd-resolved || {
+    echo "Failed to stop systemd-resolved" | tee -a "$LOG_FILE"
+}
+systemctl disable systemd-resolved || {
+    echo "Failed to disable systemd-resolved" | tee -a "$LOG_FILE"
+}
+# Configure external DNS servers
+echo "Configuring external DNS servers..."
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+# Attempt to make resolv.conf immutable, ignore if filesystem doesn't support
+chattr +i /etc/resolv.conf || {
+    echo "Warning: Failed to make /etc/resolv.conf immutable, continuing..." | tee -a "$LOG_FILE"
+}
+
 # Configure WiFi access point
 echo "Configuring WiFi access point on $WIFI_IFACE..."
 # Set static IP for wlan0
-mkdir -p /etc/network/interfaces.d
-cat > /etc/network/interfaces.d/$WIFI_IFACE <<EOF
-auto $WIFI_IFACE
-iface $WIFI_IFACE inet static
-    address $WIFI_IP
-    netmask 255.255.255.0
-EOF
-
-# Ensure eth0 uses DHCP
-cat > /etc/network/interfaces.d/eth0 <<EOF
-auto eth0
-iface eth0 inet dhcp
-EOF
+echo "Assigning static IP $WIFI_IP to $WIFI_IFACE..."
+ip addr flush dev "$WIFI_IFACE"
+ip addr add "$WIFI_IP/24" dev "$WIFI_IFACE" || {
+    echo "Failed to assign IP $WIFI_IP to $WIFI_IFACE" | tee -a "$LOG_FILE"
+    exit 1
+}
+ip link set "$WIFI_IFACE" up || {
+    echo "Failed to bring up $WIFI_IFACE" | tee -a "$LOG_FILE"
+    exit 1
+}
 
 # Configure hostapd
+echo "Configuring hostapd..."
 cat > /etc/hostapd/hostapd.conf <<EOF
 interface=$WIFI_IFACE
 driver=nl80211
@@ -189,12 +208,12 @@ ignore_broadcast_ssid=0
 wpa=2
 wpa_passphrase=$WIFI_PASS
 wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
 echo "DAEMON_CONF=/etc/hostapd/hostapd.conf" | sudo tee -a /etc/default/hostapd
 
 # Configure dnsmasq
+echo "Configuring dnsmasq..."
 cat > /etc/dnsmasq.conf <<EOF
 interface=$WIFI_IFACE
 dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,12h
@@ -217,18 +236,15 @@ EOF
         echo "Failed to restart NetworkManager" | tee -a "$LOG_FILE"
         exit 1
     }
+    # Explicitly set wlan0 to unmanaged
+    nmcli device set "$WIFI_IFACE" managed no || {
+        echo "Failed to set $WIFI_IFACE to unmanaged in NetworkManager" | tee -a "$LOG_FILE"
+    }
 fi
 
 # Disable IP forwarding
 echo "Disabling IP forwarding for standalone WiFi AP..."
 sysctl -w net.ipv4.ip_forward=0
-
-# Ensure wlan0 is up before starting services
-echo "Bringing up $WIFI_IFACE..."
-ip link set "$WIFI_IFACE" up || {
-    echo "Failed to bring up $WIFI_IFACE" | tee -a "$LOG_FILE"
-    exit 1
-}
 
 # Enable and start hostapd and dnsmasq
 echo "Enabling and starting hostapd and dnsmasq services..."
@@ -295,6 +311,7 @@ if systemctl is-active --quiet hostapd && systemctl is-active --quiet dnsmasq; t
     echo "WiFi access point services are running" | tee -a "$LOG_FILE"
 else
     echo "WiFi access point services not fully running, check logs with: journalctl -u hostapd -u dnsmasq" | tee -a "$LOG_FILE"
+    exit 1
 fi
 if ip addr show eth0 | grep -q "inet "; then
     echo "Ethernet interface eth0 is configured" | tee -a "$LOG_FILE"
