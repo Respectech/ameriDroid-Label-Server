@@ -148,8 +148,14 @@ fi
 
 # Check if WiFi dongle supports AP mode
 echo "Checking AP mode support for $WIFI_IFACE..."
-if ! iw list | grep -A 10 "valid interface combinations" | grep -q "* AP"; then
-    echo "Error: WiFi dongle does not support AP mode. Please use a compatible dongle." | tee -a "$LOG_FILE"
+iw list > /tmp/iw_list_output.txt
+if ! grep -B 10 "Supported interface modes" /tmp/iw_list_output.txt | grep -q "* AP"; then
+    echo "Error: WiFi dongle does not support AP mode." | tee -a "$LOG_FILE"
+    echo "Full iw list output saved to /tmp/iw_list_output.txt for debugging." | tee -a "$LOG_FILE"
+    echo "Try updating firmware (sudo apt install linux-firmware) or installing a new driver:" | tee -a "$LOG_FILE"
+    echo "  sudo apt install dkms git build-essential linux-headers-$(uname -r)" | tee -a "$LOG_FILE"
+    echo "  git clone https://github.com/morrownr/8821cu-20210118.git /home/odroid/8821cu-20210118" | tee -a "$LOG_FILE"
+    echo "  cd /home/odroid/8821cu-20210118 && sudo ./install-driver.sh" | tee -a "$LOG_FILE"
     exit 1
 fi
 
