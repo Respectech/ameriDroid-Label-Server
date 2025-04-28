@@ -130,13 +130,17 @@ else
     echo "requirements.txt not found, installing core packages..."
     "$PYTHON_EXEC" -m pip install --no-deps --force-reinstall \
         brother_ql \
-        Flask \
         Pillow \
         qrcode \
         PyPDF2 \
         attrs \
         || {
         echo "Failed to install core Python packages" | tee -a "$LOG_FILE"
+        exit 1
+    }
+    # Install Flask with dependencies
+    "$PYTHON_EXEC" -m pip install --force-reinstall flask || {
+        echo "Failed to install Flask with dependencies" | tee -a "$LOG_FILE"
         exit 1
     }
 fi
@@ -173,12 +177,34 @@ systemctl disable systemd-resolved || {
 }
 # Configure external DNS servers
 echo "Configuring external DNS servers..."
+# Ensure /etc/resolv.conf is not a symlink
+if [ -L /etc/resolv.conf ]; then
+    sudo rm /etc/resolv.conf
+fi
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 echo "nameserver 8.8.4.4" >> /etc/resolv.conf
 # Attempt to make resolv.conf immutable, ignore if filesystem doesn't support
 chattr +i /etc/resolv.conf || {
     echo "Warning: Failed to make /etc/resolv.conf immutable, continuing..." | tee -a "$LOG_FILE"
 }
+# Disable NetworkManager DNS management
+echo "Disabling NetworkManager DNS management..."
+if [ -f /etc/NetworkManager/NetworkManager.conf ]; then
+    sed -i '/^\[main\]/a dns=none' /etc/NetworkManager/NetworkManager.conf || {
+        echo "Failed to disable NetworkManager DNS" | tee -a "$LOG_FILE"
+    }
+    systemctl restart NetworkManager || {
+        echo "Failed to restart NetworkManager" | tee -a "$LOG_FILE"
+        exit 1
+    }
+fi
+
+# Verify DNS resolution
+echo "Verifying DNS resolution..."
+if ! nslookup pypi.org > /dev/null; then
+    echo "Error: DNS resolution failed, cannot proceed with package installation" | tee -a "$LOG_FILE"
+    exit 1
+fi
 
 # Configure WiFi access point
 echo "Configuring WiFi access point on $WIFI_IFACE..."
@@ -225,6 +251,7 @@ if [ -f /etc/NetworkManager/NetworkManager.conf ]; then
     cat > /etc/NetworkManager/NetworkManager.conf <<EOF
 [main]
 plugins=ifupdown,keyfile
+dns=none
 
 [ifupdown]
 managed=false
@@ -274,6 +301,9 @@ User=odroid
 WorkingDirectory=$INSTALL_DIR
 ExecStart=$PYTHON_EXEC $INSTALL_DIR/app.py
 Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -293,11 +323,27 @@ systemctl start "$SERVICE_NAME" || {
 # Set permissions for printer USB access
 echo "Configuring USB permissions for Brother QL-810W..."
 usermod -a -G lp odroid
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="209c", MODE="0666", GROUP="lp"' > /etc/udev/rules.d/99-brother-ql810w.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct)=="209c", MODE="0666", GROUP="lp"' > /etc/udev/rules.d/99-brother-ql810w.rules
 udevadm control --reload-rules && udevadm trigger || {
     echo "Failed to configure USB permissions" | tee -a "$LOG_FILE"
     exit 1
 }
+
+# Verify Flask is listening on port 5001
+echo "Verifying Flask web server..."
+if ! netstat -tulnp | grep -q ":5001.*python3"; then
+    echo "Error: Flask web server not listening on port 5001, check logs with: journalctl -u $SERVICE_NAME" | tee -a "$LOG_FILE"
+    exit 1
+fi
+
+# Open port 5001 in firewall if ufw is active
+if ufw status | grep -q "Status: active"; then
+    echo "Opening port 5001 in firewall..."
+    ufw allow 5001/tcp || {
+        echo "Failed to open port 5001 in firewall" | tee -a "$LOG_FILE"
+        exit 1
+    }
+fi
 
 # Verify installation
 echo "Verifying installation..."
