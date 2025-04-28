@@ -149,7 +149,7 @@ fi
 # Check if WiFi dongle supports AP mode
 echo "Checking AP mode support for $WIFI_IFACE..."
 iw list > /tmp/iw_list_output.txt
-if ! grep -B 10 "Supported interface modes" /tmp/iw_list_output.txt | grep -q "* AP"; then
+if ! grep "* AP" /tmp/iw_list_output.txt | grep -q "Supported interface modes"; then
     echo "Error: WiFi dongle does not support AP mode." | tee -a "$LOG_FILE"
     echo "Full iw list output saved to /tmp/iw_list_output.txt for debugging." | tee -a "$LOG_FILE"
     echo "Try updating firmware (sudo apt install linux-firmware) or installing a new driver:" | tee -a "$LOG_FILE"
