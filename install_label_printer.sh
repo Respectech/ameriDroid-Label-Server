@@ -139,7 +139,7 @@ else
         exit 1
     }
     # Install Flask with dependencies
-    "$PYTHON_EXEC" -m pip install flask || {
+    "$PYTHON_EXEC" -m pip install --ignore-installed flask || {
         echo "Failed to install Flask with dependencies" | tee -a "$LOG_FILE"
         exit 1
     }
