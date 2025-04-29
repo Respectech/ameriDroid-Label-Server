@@ -122,13 +122,13 @@ fi
 echo "Installing Python dependencies from requirements.txt..."
 cd "$INSTALL_DIR"
 if [ -f "$INSTALL_DIR/requirements.txt" ]; then
-    "$PYTHON_EXEC" -m pip install --no-deps --force-reinstall -r "$INSTALL_DIR/requirements.txt" || {
+    "$PYTHON_EXEC" -m pip install --no-deps -r "$INSTALL_DIR/requirements.txt" || {
         echo "Failed to install Python packages from requirements.txt" | tee -a "$LOG_FILE"
         exit 1
     }
 else
     echo "requirements.txt not found, installing core packages..."
-    "$PYTHON_EXEC" -m pip install --no-deps --force-reinstall \
+    "$PYTHON_EXEC" -m pip install --no-deps \
         brother_ql \
         Pillow \
         qrcode \
@@ -139,7 +139,7 @@ else
         exit 1
     }
     # Install Flask with dependencies
-    "$PYTHON_EXEC" -m pip install --force-reinstall flask || {
+    "$PYTHON_EXEC" -m pip install flask || {
         echo "Failed to install Flask with dependencies" | tee -a "$LOG_FILE"
         exit 1
     }
