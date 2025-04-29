@@ -134,6 +134,7 @@ else
         qrcode \
         PyPDF2 \
         attrs \
+        packbits \
         || {
         echo "Failed to install core Python packages" | tee -a "$LOG_FILE"
         exit 1
