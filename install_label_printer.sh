@@ -80,6 +80,7 @@ apt install -y \
     hostapd \
     dnsmasq \
     linux-firmware \
+    samba \
     || {
     echo "Failed to install system dependencies, attempting pip fallback for pyusb..." | tee -a "$LOG_FILE"
     "$PYTHON_EXEC" -m pip install pyusb || {
@@ -134,7 +135,6 @@ else
         qrcode \
         PyPDF2 \
         attrs \
-        packbits \
         || {
         echo "Failed to install core Python packages" | tee -a "$LOG_FILE"
         exit 1
@@ -321,10 +321,57 @@ systemctl start "$SERVICE_NAME" || {
     exit 1
 }
 
+# Create 'label' user and set password
+echo "Creating 'label' user and setting password to 'label'..."
+if ! id "label" &>/dev/null; then
+    useradd -m -s /bin/bash label
+fi
+echo "label:label" | chpasswd
+
+# Ensure Samba shares are configured
+echo "Ensuring Samba shares are configured..."
+if ! grep -q '\[print\]' /etc/samba/smb.conf; then
+    cat >> /etc/samba/smb.conf <<EOL
+[print]
+    path = /home/odroid/label_printer_web/print
+    browseable = yes
+    read only = no
+    writable = yes
+    valid users = label
+    create mask = 0666
+    directory mask = 0777
+    force user = odroid
+    force group = odroid
+EOL
+fi
+
+if ! grep -q '\[fonts\]' /etc/samba/smb.conf; then
+    cat >> /etc/samba/smb.conf <<EOL
+[fonts]
+    path = /home/odroid/label_printer_web/static/fonts
+    browseable = yes
+    read only = no
+    writable = yes
+    valid users = label
+    create mask = 0666
+    directory mask = 0777
+    force user = odroid
+    force group = odroid
+EOL
+fi
+
+# Test Samba configuration
+echo "Testing Samba configuration..."
+testparm
+
+# Restart Samba services
+echo "Restarting Samba services..."
+systemctl restart smbd nmbd
+
 # Set permissions for printer USB access
 echo "Configuring USB permissions for Brother QL-810W..."
 usermod -a -G lp odroid
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct)=="209c", MODE="0666", GROUP="lp"' > /etc/udev/rules.d/99-brother-ql810w.rules
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="209c", MODE="0666", GROUP="lp"' >/etc/udev/rules.d/99-brother-ql810w.rules
 udevadm control --reload-rules && udevadm trigger || {
     echo "Failed to configure USB permissions" | tee -a "$LOG_FILE"
     exit 1
@@ -364,6 +411,7 @@ if ip addr show eth0 | grep -q "inet "; then
     echo "Ethernet interface eth0 is configured" | tee -a "$LOG_FILE"
 else
     echo "Ethernet interface eth0 not configured, check network settings" | tee -a "$LOG_FILE"
+    exit 1
 fi
 
 # Print completion message
