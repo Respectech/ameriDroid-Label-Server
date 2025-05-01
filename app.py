@@ -406,7 +406,7 @@ def delete_template():
 
         if not os.path.exists(json_path):
             logger.error(f"Template '{template_name}' does not exist")
-            return jsonify({'message': f"Template '{template_name}' does not exist'}), 404
+            return jsonify({'message': f"Template '{template_name}' does not exist'"}), 404
 
         try:
             os.remove(json_path)
