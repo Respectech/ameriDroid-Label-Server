@@ -13,14 +13,16 @@ import subprocess
 import base64
 from io import BytesIO
 from PIL import Image
-import qrcode  # Added for QR code generation
-from datetime import datetime  # Added for timestamp in filenames
+import qrcode
+from datetime import datetime
+import logging
 
-try:
-    from watch_print_dir import watch_print_directory
-except ImportError as e:
-    logger.error(f"Failed to import watch_print_directory: {str(e)}")
-    watch_print_directory = None
+# Ensure logger writes to app.log
+file_handler = logging.FileHandler('/home/odroid/label_printer_web/app.log')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 app = Flask(__name__)
 
@@ -51,14 +53,13 @@ def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf=
     Returns a dictionary with interface, SSID, password, security, and gateway IP.
     """
     wifi_details = {
-        "interface": "wlan0",  # Default fallback
+        "interface": "wlan0",
         "ssid": "LabelPrinterAP",
         "password": "",
         "security": "nopass",
-        "gateway_ip": "192.168.4.1"  # Default fallback
+        "gateway_ip": "192.168.4.1"
     }
 
-    # Read hostapd.conf
     try:
         with open(hostapd_conf, "r") as f:
             for line in f:
@@ -79,7 +80,6 @@ def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf=
     except Exception as e:
         logger.error(f"Error reading {hostapd_conf}: {e}. Using fallback Wi-Fi details.")
 
-    # Read dnsmasq.conf to get gateway IP
     try:
         with open(dnsmasq_conf, "r") as f:
             for line in f:
@@ -89,8 +89,6 @@ def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf=
                 if line.startswith("dhcp-range="):
                     parts = line.split("=")[1].split(",")
                     if len(parts) >= 3:
-                        # dhcp-range=<start>,<end>,<netmask>,<lease>
-                        # Gateway IP is typically the base of the range (e.g., 192.168.4.1)
                         gateway_ip = parts[0].rsplit(".", 1)[0] + ".1"
                         wifi_details["gateway_ip"] = gateway_ip
         logger.debug(f"Loaded dnsmasq.conf gateway IP: {wifi_details['gateway_ip']}")
@@ -116,8 +114,13 @@ def save_qr_code(data, filename_prefix):
     Returns the path to the saved file or None if saving fails.
     """
     try:
+        # Check /tmp permissions
+        tmp_dir = "/tmp"
+        if not os.access(tmp_dir, os.W_OK):
+            logger.error(f"No write permission for {tmp_dir}")
+            return None
+
         # Generate QR code
-   
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -139,7 +142,7 @@ def save_qr_code(data, filename_prefix):
         logger.info(f"Saved QR code to {filename}")
         return filename
     except Exception as e:
-        logger.error(f"Failed to save QR code for {filename_prefix}: {e}")
+        logger.error(f"Failed to save QR code for {filename_prefix}: {str(e)}")
         return None
 
 def load_default_settings():
@@ -155,6 +158,7 @@ def load_default_settings():
     return defaults
 
 def check_and_update_ip_port():
+    logger.debug("Entering check_and_update_ip_port")
     # Load Wi-Fi details to get the interface
     wifi_details = load_wifi_ap_details()
     interface = wifi_details["interface"]
@@ -230,22 +234,19 @@ def restart():
     logger.info(f"Restart requested from {request.remote_addr}")
     try:
         logger.debug("Starting restart endpoint")
-        # Delay to ensure response is sent
         time.sleep(1)
         logger.debug("Initiating systemctl restart label-printer.service")
-        # Use Popen for non-blocking restart
         process = subprocess.Popen(
             ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
             stdout=subprocess.PIPE,
-            stderr EFFECTS=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True
         )
         logger.debug(f"Started systemctl restart with PID {process.pid}")
-        # Updated response to include reload instruction
         return jsonify({
             'message': 'Webserver restart initiated. Please wait a few seconds and refresh.',
-            'reload': True,  # Instruct client to reload the main page
-            'redirect': '/'  # Alternatively, specify the main page URL
+            'reload': True,
+            'redirect': '/'
         })
     except Exception as e:
         logger.error(f"Failed to initiate server restart: {str(e)}")
@@ -273,33 +274,27 @@ def save_template():
             logger.error("Missing template name or configuration")
             return jsonify({'message': 'Template name and configuration are required'}), 400
 
-        # Validate template name (allow letters, numbers, underscores, hyphens, and spaces)
         import re
         if not re.match(r'^[a-zA-Z0-9\s_-]+$', template_name):
             logger.error(f"Invalid template name: {template_name}")
             return jsonify({'message': 'Template name can only contain letters, numbers, underscores, hyphens, and spaces'}), 400
 
-        # Normalize template name
         template_name = re.sub(r'\s+', ' ', template_name.strip())
 
-        # Parse config
         try:
             config = json.loads(template_config)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid template config JSON: {str(e)}")
             return jsonify({'message': 'Invalid template configuration'}), 400
 
-        # Create labels directory
         labels_dir = "/home/odroid/label_printer_web/labels"
         os.makedirs(labels_dir, exist_ok=True)
 
-        # Check for existing template
         json_path = os.path.join(labels_dir, f"{template_name}.json")
         if os.path.exists(json_path):
             logger.error(f"Template '{template_name}' already exists")
             return jsonify({'message': f"Template '{template_name}' already exists"}), 400
 
-        # Save preview image as PNG
         preview_path = os.path.join(labels_dir, f"{template_name}.png")
         try:
             if template_preview.startswith('data:image/png;base64,'):
@@ -314,7 +309,6 @@ def save_template():
             logger.error(f"Error saving preview image: {str(e)}")
             return jsonify({'message': 'Error saving preview image'}), 500
 
-        # Save template JSON
         template = {
             'name': template_name,
             'config': config,
@@ -328,7 +322,6 @@ def save_template():
             return jsonify({'message': f"Template '{template_name}' saved successfully"}), 200
         except Exception as e:
             logger.error(f"Error saving template JSON: {str(e)}")
-            # Clean up preview image if JSON save fails
             if os.path.exists(preview_path):
                 os.remove(preview_path)
             return jsonify({'message': 'Error saving template'}), 500
@@ -352,7 +345,6 @@ def get_templates():
                 try:
                     with open(json_path, 'r') as f:
                         template = json.load(f)
-                    # Get preview image as base64
                     preview_path = os.path.join(labels_dir, template.get('preview_image', ''))
                     preview_base64 = ''
                     if os.path.exists(preview_path):
@@ -367,7 +359,6 @@ def get_templates():
                     logger.error(f"Error reading template {filename}: {str(e)}")
                     continue
 
-        # Sort templates alphabetically by name
         templates.sort(key=lambda x: x['name'].lower())
         logger.debug(f"Retrieved {len(templates)} templates")
         return jsonify({'templates': templates}), 200
@@ -383,25 +374,21 @@ def delete_template():
             logger.error("Missing template name")
             return jsonify({'message': 'Template name is required'}), 400
 
-        # Validate template name (same as save_template)
         import re
         if not re.match(r'^[a-zA-Z0-9\s_-]+$', template_name):
             logger.error(f"Invalid template name: {template_name}")
             return jsonify({'message': 'Template name can only contain letters, numbers, underscores, hyphens, and spaces'}), 400
 
-        # Normalize template name
         template_name = re.sub(r'\s+', ' ', template_name.strip())
 
         labels_dir = "/home/odroid/label_printer_web/labels"
         json_path = os.path.join(labels_dir, f"{template_name}.json")
         preview_path = os.path.join(labels_dir, f"{template_name}.png")
 
-        # Check if template exists
         if not os.path.exists(json_path):
             logger.error(f"Template '{template_name}' does not exist")
             return jsonify({'message': f"Template '{template_name}' does not exist"}), 404
 
-        # Delete files
         try:
             os.remove(json_path)
             if os.path.exists(preview_path):
@@ -419,24 +406,19 @@ def delete_template():
 def update_codebase():
     logger.info(f"Update codebase requested from {request.remote_addr}")
     try:
-        # Log start of operation
         logger.debug("Starting update_codebase endpoint")
-        
-        # Change to the codebase directory
         codebase_dir = "/home/odroid/label_printer_web"
         logger.debug(f"Checking codebase directory: {codebase_dir}")
         if not os.path.exists(codebase_dir):
             logger.error(f"Codebase directory {codebase_dir} does not exist")
             return jsonify({'message': f'Codebase directory {codebase_dir} does not exist'}), 500
 
-        # Verify .git directory
         git_dir = os.path.join(codebase_dir, ".git")
         logger.debug(f"Checking .git directory: {git_dir}")
         if not os.path.exists(git_dir):
             logger.error(f"Git repository not found at {git_dir}")
             return jsonify({'message': 'Git repository not initialized in codebase directory'}), 500
 
-        # Check if git is installed
         logger.debug("Checking git installation")
         try:
             subprocess.run(['git', '--version'], capture_output=True, text=True, check=True)
@@ -444,10 +426,9 @@ def update_codebase():
             logger.error(f"Git is not installed or not accessible: {str(e)}")
             return jsonify({'message': 'Git is not installed on the server'}), 500
 
-        # Execute git pull with timeout and environment
         logger.debug("Executing git pull origin main")
         env = os.environ.copy()
-        env['HOME'] = '/home/odroid'  # Ensure HOME is set for git credentials
+        env['HOME'] = '/home/odroid'
         try:
             result = subprocess.run(
                 ['git', '-C', codebase_dir, 'pull', 'origin', 'main'],
@@ -470,10 +451,8 @@ def update_codebase():
             logger.error(f"Unexpected error during git pull: {str(e)}")
             return jsonify({'message': f'Unexpected error during git pull: {str(e)}'}), 500
 
-        # Restart the server asynchronously to avoid blocking
         logger.debug("Initiating systemctl restart label-printer.service")
         try:
-            # Use subprocess.Popen to run restart non-blocking
             process = subprocess.Popen(
                 ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
                 stdout=subprocess.PIPE,
@@ -481,11 +460,10 @@ def update_codebase():
                 text=True
             )
             logger.debug(f"Started systemctl restart with PID {process.pid}")
-            # Updated response to include reload instruction
             return jsonify({
                 'message': 'Codebase update initiated. Server is restarting. Please wait a few seconds and refresh.',
-                'reload': True,  # Instruct client to reload the main page
-                'redirect': '/'  # Alternatively, specify the main page URL
+                'reload': True,
+                'redirect': '/'
             })
         except Exception as e:
             logger.error(f"Failed to initiate server restart: {str(e)}")
@@ -504,7 +482,6 @@ if __name__ == "__main__":
         check_and_update_ip_port()
         init_routes(app)
         
-        # Start directory watcher if available
         if watch_print_directory:
             try:
                 watcher_thread = threading.Thread(target=watch_print_directory, daemon=True)
