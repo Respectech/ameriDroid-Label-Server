@@ -135,6 +135,7 @@ else
         qrcode \
         PyPDF2 \
         attrs \
+        watchdog \
         || {
         echo "Failed to install core Python packages" | tee -a "$LOG_FILE"
         exit 1
