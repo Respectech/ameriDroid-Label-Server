@@ -22,17 +22,91 @@ except ImportError as e:
 
 app = Flask(__name__)
 
-def get_ip_address():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_ip_address(interface):
+    """
+    Get the IP address of the specified network interface.
+    """
     try:
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        result = subprocess.run(
+            ['ip', 'addr', 'show', interface],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        for line in result.stdout.splitlines():
+            if 'inet ' in line:
+                ip = line.strip().split()[1].split('/')[0]
+                return ip
+        logger.error(f"No IP address found for interface {interface}")
+        return None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Could not determine IP address for {interface}: {e}")
+        return None
+
+def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf="/etc/dnsmasq.conf"):
+    """
+    Load Wi-Fi AP details from hostapd.conf and cross-reference with dnsmasq.conf.
+    Returns a dictionary with interface, SSID, password, security, and gateway IP.
+    """
+    wifi_details = {
+        "interface": "wlan0",  # Default fallback
+        "ssid": "LabelPrinterAP",
+        "password": "",
+        "security": "nopass",
+        "gateway_ip": "192.168.4.1"  # Default fallback
+    }
+
+    # Read hostapd.conf
+    try:
+        with open(hostapd_conf, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    if key == "interface":
+                        wifi_details["interface"] = value
+                    elif key == "ssid":
+                        wifi_details["ssid"] = value
+                    elif key == "wpa_passphrase":
+                        wifi_details["password"] = value
+                    elif key == "wpa":
+                        wifi_details["security"] = "WPA" if value in ["1", "2"] else "nopass"
+        logger.debug(f"Loaded hostapd.conf details: {wifi_details}")
     except Exception as e:
-        logger.error(f"Could not determine IP address: {e}")
-        ip = "127.0.0.1"
-    finally:
-        s.close()
-    return ip
+        logger.error(f"Error reading {hostapd_conf}: {e}. Using fallback Wi-Fi details.")
+
+    # Read dnsmasq.conf to get gateway IP
+    try:
+        with open(dnsmasq_conf, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("dhcp-range="):
+                    parts = line.split("=")[1].split(",")
+                    if len(parts) >= 3:
+                        # dhcp-range=<start>,<end>,<netmask>,<lease>
+                        # Gateway IP is typically the base of the range (e.g., 192.168.4.1)
+                        gateway_ip = parts[0].rsplit(".", 1)[0] + ".1"
+                        wifi_details["gateway_ip"] = gateway_ip
+        logger.debug(f"Loaded dnsmasq.conf gateway IP: {wifi_details['gateway_ip']}")
+    except Exception as e:
+        logger.error(f"Error reading {dnsmasq_conf}: {e}. Using Ved to fallback gateway IP.")
+
+    return wifi_details
+
+def generate_wifi_qr_string(wifi_details):
+    """
+    Generate a QR code string for Wi-Fi connection.
+    Format: WIFI:S:<SSID>;T:<security>;P:<password>;;
+    """
+    ssid = wifi_details["ssid"]
+    security = wifi_details["security"]
+    password = wifi_details["password"] if security != "nopass" else ""
+    qr_string = f"WIFI:S:{ssid};T:{security};P:{password};;"
+    return qr_string
 
 def load_default_settings():
     settings_file = "/home/odroid/label_printer_web/settings.txt"
@@ -47,7 +121,12 @@ def load_default_settings():
     return defaults
 
 def check_and_update_ip_port():
-    ip = get_ip_address()
+    # Load Wi-Fi details to get the interface
+    wifi_details = load_wifi_ap_details()
+    interface = wifi_details["interface"]
+    
+    # Get IP address from interface, fall back to gateway IP
+    ip = get_ip_address(interface) or wifi_details["gateway_ip"]
     port = app.config.get("PORT", 5001)
     current_address = f"http://{ip}:{port}"
     logger.debug(f"Starting with address: {current_address}")
@@ -63,27 +142,52 @@ def check_and_update_ip_port():
             logger.error(f"Error reading {ip_file}: {e}")
 
     if previous_address != current_address:
-        logger.info(f"Address changed from '{previous_address}' to '{current_address}'. Printing new QR code.")
+        logger.info(f"Address changed from '{previous_address}' to '{current_address}'. Printing new QR codes.")
+        # Save the new address
+        try:
+            with open(ip_file, "w") as f:
+                f.write(current_address)
+        except Exception as e:
+            logger.error(f"Error writing to {ip_file}: {e}")
+
+        # Print URL QR code
         for attempt in range(3):
             try:
-                with open(ip_file, "w") as f:
-                    f.write(current_address)
                 result = print_qr_code(current_address)
                 if "Printing was successful" in result.stdout:
-                    logger.info("New QR code printed successfully.")
+                    logger.info("URL QR code printed successfully.")
                     break
                 else:
-                    logger.error(f"Failed to print QR code (attempt {attempt + 1}/3): {result.stderr}")
+                    logger.error(f"Failed to print URL QR code (attempt {attempt + 1}/3): {result.stderr}")
                     resolve_usb_conflicts()
                     time.sleep(2)
             except Exception as e:
-                logger.error(f"Error printing QR code at startup (attempt {attempt + 1}/3): {e}")
+                logger.error(f"Error printing URL QR code at startup (attempt {attempt + 1}/3): {e}")
                 resolve_usb_conflicts()
                 time.sleep(2)
         else:
-            logger.error("Failed to print QR code after 3 attempts.")
+            logger.error("Failed to print URL QR code after 3 attempts.")
+
+        # Print Wi-Fi QR code
+        wifi_qr_string = generate_wifi_qr_string(wifi_details)
+        for attempt in range(3):
+            try:
+                result = print_qr_code(wifi_qr_string)
+                if "Printing was successful" in result.stdout:
+                    logger.info("Wi-Fi QR code printed successfully.")
+                    break
+                else:
+                    logger.error(f"Failed to print Wi-Fi QR code (attempt {attempt + 1}/3): {result.stderr}")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+            except Exception as e:
+                logger.error(f"Error printing Wi-Fi QR code at startup (attempt {attempt + 1}/3): {e}")
+                resolve_usb_conflicts()
+                time.sleep(2)
+        else:
+            logger.error("Failed to print Wi-Fi QR code after 3 attempts.")
     else:
-        logger.debug("Address unchanged, no QR code printed.")
+        logger.debug("Address unchanged, no QR codes printed.")
 
 @app.route('/restart', methods=['POST'])
 def restart():
