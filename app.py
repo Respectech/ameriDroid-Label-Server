@@ -174,79 +174,89 @@ def serve_qr_code(filename):
 
 def check_and_update_ip_port():
     logger.debug("Entering check_and_update_ip_port")
-    # Load Wi-Fi details to get the interface
+    # Load Wi-Fi details
     wifi_details = load_wifi_ap_details()
-    interface = wifi_details["interface"]
-    
-    # Get IP address from interface, fall back to gateway IP
-    ip = get_ip_address(interface) or wifi_details["gateway_ip"]
+    wifi_interface = wifi_details["interface"]
+    ethernet_interface = "eth0"  # Hardcoded for Ethernet
+
+    # Get IP addresses
+    wifi_ip = get_ip_address(wifi_interface) or wifi_details["gateway_ip"]
+    ethernet_ip = get_ip_address(ethernet_interface)
     port = app.config.get("PORT", 5001)
-    current_address = f"http://{ip}:{port}"
-    logger.debug(f"Starting with address: {current_address}")
+
+    # Prepare addresses
+    addresses = []
+    if wifi_ip:
+        addresses.append(("wifi", wifi_ip, f"http://{wifi_ip}:{port}"))
+    if ethernet_ip:
+        addresses.append(("ethernet", ethernet_ip, f"http://{ethernet_ip}:{port}"))
 
     ip_file = "/home/odroid/label_printer_web/ip.txt"
-    previous_address = None
-    
+    previous_addresses = {}
     if os.path.exists(ip_file):
         try:
             with open(ip_file, "r") as f:
-                previous_address = f.read().strip()
+                previous_addresses = json.load(f)
         except Exception as e:
             logger.error(f"Error reading {ip_file}: {e}")
 
-    if previous_address != current_address:
-        logger.info(f"Address changed from '{previous_address}' to '{current_address}'. Printing new QR codes.")
-        # Save the new address
+    current_addresses = {interface: url for interface, _, url in addresses}
+    if previous_addresses != current_addresses:
+        logger.info(f"Addresses changed from {previous_addresses} to {current_addresses}. Printing new QR codes.")
+        # Save the new addresses
         try:
             with open(ip_file, "w") as f:
-                f.write(current_address)
+                json.dump(current_addresses, f)
         except Exception as e:
             logger.error(f"Error writing to {ip_file}: {e}")
 
-        # Print and save URL QR code
-        url_qr_filename = save_qr_code(current_address, "url_qr")
-        if url_qr_filename:
-            logger.info(f"URL QR code saved as {url_qr_filename}, accessible at /qr_codes/{url_qr_filename}")
-        for attempt in range(3):
-            try:
-                result = print_qr_code(current_address)
-                if "Printing was successful" in result.stdout:
-                    logger.info("URL QR code printed successfully.")
-                    break
-                else:
-                    logger.error(f"Failed to print URL QR code (attempt {attempt + 1}/3): {result.stderr}")
+        # Process each interface
+        for interface, ip, url in addresses:
+            # Save and print URL QR code
+            url_qr_filename = save_qr_code(url, f"{interface}_url_qr")
+            if url_qr_filename:
+                logger.info(f"{interface.capitalize()} URL QR code saved as {url_qr_filename}, accessible at /qr_codes/{url_qr_filename}")
+            for attempt in range(3):
+                try:
+                    result = print_qr_code(url)
+                    if "Printing was successful" in result.stdout:
+                        logger.info(f"{interface.capitalize()} URL QR code printed successfully.")
+                        break
+                    else:
+                        logger.error(f"Failed to print {interface} URL QR code (attempt {attempt + 1}/3): {result.stderr}")
+                        resolve_usb_conflicts()
+                        time.sleep(2)
+                except Exception as e:
+                    logger.error(f"Error printing {interface} URL QR code at startup (attempt {attempt + 1}/3): {e}")
                     resolve_usb_conflicts()
                     time.sleep(2)
-            except Exception as e:
-                logger.error(f"Error printing URL QR code at startup (attempt {attempt + 1}/3): {e}")
-                resolve_usb_conflicts()
-                time.sleep(2)
-        else:
-            logger.error("Failed to print URL QR code after 3 attempts.")
+            else:
+                logger.error(f"Failed to print {interface} URL QR code after 3 attempts.")
 
-        # Print and save Wi-Fi QR code
-        wifi_qr_string = generate_wifi_qr_string(wifi_details)
-        wifi_qr_filename = save_qr_code(wifi_qr_string, "wifi_qr")
-        if wifi_qr_filename:
-            logger.info(f"Wi-Fi QR code saved as {wifi_qr_filename}, accessible at /qr_codes/{wifi_qr_filename}")
-        for attempt in range(3):
-            try:
-                result = print_qr_code(wifi_qr_string)
-                if "Printing was successful" in result.stdout:
-                    logger.info("Wi-Fi QR code printed successfully.")
-                    break
+            # Save and print Wi-Fi QR code (only for Wi-Fi interface)
+            if interface == "wifi":
+                wifi_qr_string = generate_wifi_qr_string(wifi_details)
+                wifi_qr_filename = save_qr_code(wifi_qr_string, "wifi_qr")
+                if wifi_qr_filename:
+                    logger.info(f"Wi-Fi QR code saved as {wifi_qr_filename}, accessible at /qr_codes/{wifi_qr_filename}")
+                for attempt in range(3):
+                    try:
+                        result = print_qr_code(wifi_qr_string)
+                        if "Printing was successful" in result.stdout:
+                            logger.info("Wi-Fi QR code printed successfully.")
+                            break
+                        else:
+                            logger.error(f"Failed to print Wi-Fi QR code (attempt {attempt + 1}/3): {result.stderr}")
+                            resolve_usb_conflicts()
+                            time.sleep(2)
+                    except Exception as e:
+                        logger.error(f"Error printing Wi-Fi QR code at startup (attempt {attempt + 1}/3): {e}")
+                        resolve_usb_conflicts()
+                        time.sleep(2)
                 else:
-                    logger.error(f"Failed to print Wi-Fi QR code (attempt {attempt + 1}/3): {result.stderr}")
-                    resolve_usb_conflicts()
-                    time.sleep(2)
-            except Exception as e:
-                logger.error(f"Error printing Wi-Fi QR code at startup (attempt {attempt + 1}/3): {e}")
-                resolve_usb_conflicts()
-                time.sleep(2)
-        else:
-            logger.error("Failed to print Wi-Fi QR code after 3 attempts.")
+                    logger.error("Failed to print Wi-Fi QR code after 3 attempts.")
     else:
-        logger.debug("Address unchanged, no QR codes printed.")
+        logger.debug("Addresses unchanged, no QR codes printed.")
 
 @app.route('/restart', methods=['POST'])
 def restart():
@@ -406,7 +416,7 @@ def delete_template():
 
         if not os.path.exists(json_path):
             logger.error(f"Template '{template_name}' does not exist")
-            return jsonify({'message': f"Template '{template_name}' does not exist'"}), 404
+            return jsonify({'message': f"Template '{template_name}' does not exist"}), 404
 
         try:
             os.remove(json_path)
@@ -501,6 +511,14 @@ if __name__ == "__main__":
         check_and_update_ip_port()
         init_routes(app)
         
+        # Import watch_print_directory
+        try:
+            from watch_print_dir import watch_print_directory
+            logger.info("Successfully imported watch_print_directory")
+        except ImportError as e:
+            logger.error(f"Failed to import watch_print_directory: {str(e)}")
+            watch_print_directory = None
+
         if watch_print_directory:
             try:
                 watcher_thread = threading.Thread(target=watch_print_directory, daemon=True)
