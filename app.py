@@ -406,7 +406,7 @@ def delete_template():
 
         if not os.path.exists(json_path):
             logger.error(f"Template '{template_name}' does not exist")
-            return jsonify({'message': f"Template '{template_name}' does not exist"}), 404
+            return jsonify({'message': f"Template '{template_name}' does not exist'}), 404
 
         try:
             os.remove(json_path)
@@ -430,7 +430,6 @@ def update_codebase():
         logger.debug(f"Checking codebase directory: {codebase_dir}")
         if not os.path.exists(codebase_dir):
             logger.error(f"Codebase directory {codebase_dir} does not exist")
-Alternate
             return jsonify({'message': f'Codebase directory {codebase_dir} does not exist'}), 500
 
         git_dir = os.path.join(codebase_dir, ".git")
