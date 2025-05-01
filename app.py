@@ -1,5 +1,5 @@
 import socket
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from label_printer.routes import init_routes
 from label_printer.printing import print_qr_code
 from label_printer.history import ensure_history_file
@@ -110,14 +110,17 @@ def generate_wifi_qr_string(wifi_details):
 
 def save_qr_code(data, filename_prefix):
     """
-    Generate a QR code from the given data and save it as a PNG in /tmp.
-    Returns the path to the saved file or None if saving fails.
+    Generate a QR code from the given data and save it as a PNG in static/qr_codes.
+    Returns the filename (relative to static/qr_codes) or None if saving fails.
     """
     try:
-        # Check /tmp permissions
-        tmp_dir = "/tmp"
-        if not os.access(tmp_dir, os.W_OK):
-            logger.error(f"No write permission for {tmp_dir}")
+        # Define save directory
+        save_dir = "/home/odroid/label_printer_web/static/qr_codes"
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Check write permissions
+        if not os.access(save_dir, os.W_OK):
+            logger.error(f"No write permission for {save_dir}")
             return None
 
         # Generate QR code
@@ -135,11 +138,12 @@ def save_qr_code(data, filename_prefix):
 
         # Generate unique filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"/tmp/{filename_prefix}_{timestamp}.png"
+        filename = f"{filename_prefix}_{timestamp}.png"
+        full_path = os.path.join(save_dir, filename)
         
         # Save image
-        img.save(filename)
-        logger.info(f"Saved QR code to {filename}")
+        img.save(full_path)
+        logger.info(f"Saved QR code to {full_path}")
         return filename
     except Exception as e:
         logger.error(f"Failed to save QR code for {filename_prefix}: {str(e)}")
@@ -156,6 +160,17 @@ def load_default_settings():
         except Exception as e:
             logger.error(f"Error loading settings.txt: {e}")
     return defaults
+
+@app.route('/qr_codes/<filename>')
+def serve_qr_code(filename):
+    """
+    Serve QR code images from static/qr_codes directory.
+    """
+    try:
+        return send_from_directory('static/qr_codes', filename)
+    except Exception as e:
+        logger.error(f"Error serving QR code {filename}: {str(e)}")
+        return jsonify({'message': f'QR code not found: {str(e)}'}), 404
 
 def check_and_update_ip_port():
     logger.debug("Entering check_and_update_ip_port")
@@ -189,7 +204,9 @@ def check_and_update_ip_port():
             logger.error(f"Error writing to {ip_file}: {e}")
 
         # Print and save URL QR code
-        url_qr_saved = save_qr_code(current_address, "url_qr")
+        url_qr_filename = save_qr_code(current_address, "url_qr")
+        if url_qr_filename:
+            logger.info(f"URL QR code saved as {url_qr_filename}, accessible at /qr_codes/{url_qr_filename}")
         for attempt in range(3):
             try:
                 result = print_qr_code(current_address)
@@ -209,7 +226,9 @@ def check_and_update_ip_port():
 
         # Print and save Wi-Fi QR code
         wifi_qr_string = generate_wifi_qr_string(wifi_details)
-        wifi_qr_saved = save_qr_code(wifi_qr_string, "wifi_qr")
+        wifi_qr_filename = save_qr_code(wifi_qr_string, "wifi_qr")
+        if wifi_qr_filename:
+            logger.info(f"Wi-Fi QR code saved as {wifi_qr_filename}, accessible at /qr_codes/{wifi_qr_filename}")
         for attempt in range(3):
             try:
                 result = print_qr_code(wifi_qr_string)
@@ -411,6 +430,7 @@ def update_codebase():
         logger.debug(f"Checking codebase directory: {codebase_dir}")
         if not os.path.exists(codebase_dir):
             logger.error(f"Codebase directory {codebase_dir} does not exist")
+Alternate
             return jsonify({'message': f'Codebase directory {codebase_dir} does not exist'}), 500
 
         git_dir = os.path.join(codebase_dir, ".git")
