@@ -13,6 +13,8 @@ import subprocess
 import base64
 from io import BytesIO
 from PIL import Image
+import qrcode  # Added for QR code generation
+from datetime import datetime  # Added for timestamp in filenames
 
 try:
     from watch_print_dir import watch_print_directory
@@ -93,7 +95,7 @@ def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf=
                         wifi_details["gateway_ip"] = gateway_ip
         logger.debug(f"Loaded dnsmasq.conf gateway IP: {wifi_details['gateway_ip']}")
     except Exception as e:
-        logger.error(f"Error reading {dnsmasq_conf}: {e}. Using Ved to fallback gateway IP.")
+        logger.error(f"Error reading {dnsmasq_conf}: {e}. Using fallback gateway IP.")
 
     return wifi_details
 
@@ -107,6 +109,38 @@ def generate_wifi_qr_string(wifi_details):
     password = wifi_details["password"] if security != "nopass" else ""
     qr_string = f"WIFI:S:{ssid};T:{security};P:{password};;"
     return qr_string
+
+def save_qr_code(data, filename_prefix):
+    """
+    Generate a QR code from the given data and save it as a PNG in /tmp.
+    Returns the path to the saved file or None if saving fails.
+    """
+    try:
+        # Generate QR code
+   
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+
+        # Create image
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"/tmp/{filename_prefix}_{timestamp}.png"
+        
+        # Save image
+        img.save(filename)
+        logger.info(f"Saved QR code to {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Failed to save QR code for {filename_prefix}: {e}")
+        return None
 
 def load_default_settings():
     settings_file = "/home/odroid/label_printer_web/settings.txt"
@@ -150,7 +184,8 @@ def check_and_update_ip_port():
         except Exception as e:
             logger.error(f"Error writing to {ip_file}: {e}")
 
-        # Print URL QR code
+        # Print and save URL QR code
+        url_qr_saved = save_qr_code(current_address, "url_qr")
         for attempt in range(3):
             try:
                 result = print_qr_code(current_address)
@@ -168,8 +203,9 @@ def check_and_update_ip_port():
         else:
             logger.error("Failed to print URL QR code after 3 attempts.")
 
-        # Print Wi-Fi QR code
+        # Print and save Wi-Fi QR code
         wifi_qr_string = generate_wifi_qr_string(wifi_details)
+        wifi_qr_saved = save_qr_code(wifi_qr_string, "wifi_qr")
         for attempt in range(3):
             try:
                 result = print_qr_code(wifi_qr_string)
@@ -201,7 +237,7 @@ def restart():
         process = subprocess.Popen(
             ['sudo', '/bin/systemctl', 'restart', 'label-printer.service'],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr EFFECTS=subprocess.PIPE,
             text=True
         )
         logger.debug(f"Started systemctl restart with PID {process.pid}")
