@@ -1,3 +1,18 @@
+
+This error occurs in the `save_qr_code` function due to an issue with Pillow’s `font.getbbox` method when calculating text dimensions for annotating QR codes. Below, I’ll complete the modified `app.py` from the user’s partial submission, fixing the `save_qr_code` error, enhancing logging, and ensuring QR code generation when `ip.txt` is missing. I’ll also provide deployment steps and troubleshooting guidance.
+
+### Analysis Recap
+- **Root Cause**: The `save_qr_code` function fails due to an error in `font.getbbox(data)`, which expects a 4-item box or is incompatible with the font configuration, causing QR code generation to abort.
+- **Impact**: No QR codes are saved to `static/qr_codes` because the error halts `save_qr_code` before the image is saved.
+- **Other Observations**:
+  - IP detection succeeds (`192.168.4.1` for `wlan0`, `172.16.4.176` for `eth0`), and `ip.txt` removal triggers the generation logic.
+  - The USB printer is disconnected, but this doesn’t affect QR code creation, only printing.
+  - The script lacks detailed logging to trace the full execution path.
+
+### Modified `app.py`
+The following `app.py` fixes the `getbbox` error by using `font.getlength` for text width and estimating height with `font.getbbox` on a single character. It includes enhanced logging, robust error handling, and ensures QR code generation with fallback IPs. The script preserves the user’s requested features (QR code cleanup, text annotation, file listing at `/qr_codes`).
+
+```python
 import socket
 from flask import Flask, jsonify, request, send_from_directory, render_template_string
 from label_printer.routes import init_routes
@@ -59,10 +74,10 @@ def get_ip_address(interface):
                 ip = line.strip().split()[1].split('/')[0]
                 logger.debug(f"Found IP address {ip} for {interface}")
                 return ip
-        logger.error(f"No IP address found for interface {interface}")
+        logger.warning(f"No IP address found for interface {interface}")
         return None
     except subprocess.CalledProcessError as e:
-        logger.error(f"Could not determine IP address for {interface}: {e}, stderr: {e.stderr}")
+        logger.warning(f"Could not determine IP address for {interface}: {e}, stderr: {e.stderr}")
         return None
     except Exception as e:
         logger.error(f"Unexpected error getting IP for {interface}: {str(e)}")
@@ -157,31 +172,44 @@ def save_qr_code(data, filename_prefix):
         qr.make(fit=True)
 
         # Create QR code image
-        qr_img = qr.make_image(fill_color="black", back_color="white")
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+        qr_width, qr_height = qr_img.size
+        logger.debug(f"QR code image created, size: {qr_width}x{qr_height}")
 
-        # Calculate text size and create a new image with space for text
+        # Try to add text below the QR code
         font_size = 20
+        text_width = 0
+        text_height = 0
+        new_img = qr_img  # Fallback to QR code without text if text fails
         try:
             font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+            logger.debug("Loaded DejaVuSans.ttf font")
         except Exception:
             font = ImageFont.load_default()
-            logger.warning("Using default font for QR code text")
-        text_bbox = font.getbbox(data)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
+            logger.warning("Failed to load DejaVuSans.ttf, using default font")
 
-        # Create a new image with extra space for text
-        qr_width, qr_height = qr_img.size
-        new_height = qr_height + text_height + 10  # 10px padding
-        new_width = max(qr_width, text_width + 20)  # 20px padding
-        new_img = Image.new('RGB', (new_width, new_height), 'white')
-        new_img.paste(qr_img, ((new_width - qr_width) // 2, 0))
+        try:
+            # Use getlength for text width and getbbox for height estimation
+            text_width = int(font.getlength(data))
+            text_bbox = font.getbbox("A")  # Use a single character to estimate height
+            text_height = text_bbox[3] - text_bbox[1]
+            logger.debug(f"Text dimensions: width={text_width}, height={text_height}")
 
-        # Add text below the QR code
-        draw = ImageDraw.Draw(new_img)
-        text_x = (new_width - text_width) // 2
-        text_y = qr_height + 5
-        draw.text((text_x, text_y), data, font=font, fill='black')
+            # Create a new image with extra space for text
+            new_height = qr_height + text_height + 10  # 10px padding
+            new_width = max(qr_width, text_width + 20)  # 20px padding
+            new_img = Image.new('RGB', (new_width, new_height), 'white')
+            new_img.paste(qr_img, ((new_width - qr_width) // 2, 0))
+
+            # Add text below the QR code
+            draw = ImageDraw.Draw(new_img)
+            text_x = (new_width - text_width) // 2
+            text_y = qr_height + 5
+            draw.text((text_x, text_y), data, font=font, fill='black')
+            logger.debug(f"Added text '{data}' at position ({text_x}, {text_y})")
+        except Exception as e:
+            logger.warning(f"Failed to add text to QR code: {str(e)}. Saving QR code without text.")
+            new_img = qr_img  # Fallback to QR code only
 
         # Generate unique filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -190,7 +218,7 @@ def save_qr_code(data, filename_prefix):
 
         # Save image
         new_img.save(full_path)
-        logger.info(f"Saved QR code with text to {full_path}")
+        logger.info(f"Saved QR code to {full_path}")
         return filename
     except Exception as e:
         logger.error(f"Failed to save QR code for {filename_prefix}: {str(e)}")
@@ -277,7 +305,7 @@ def check_and_update_ip_port():
         if ethernet_ip:
             addresses.append(("ethernet", ethernet_ip, f"http://{ethernet_ip}:{port}"))
         else:
-            logger.warning("No Ethernet IP detected, skipping Ethernet QR code")
+            logger.warning("No Ethernet IP detected")
         logger.debug(f"Addresses to process: {addresses}")
 
         ip_file = "/home/odroid/label_printer_web/ip.txt"
@@ -297,8 +325,8 @@ def check_and_update_ip_port():
         logger.debug(f"Current addresses: {current_addresses}")
 
         # Force QR code generation if ip.txt is missing or addresses changed
-        if not os.path.exists(ip_file) or previous_addresses != current_addresses:
-            logger.info(f"Addresses changed or ip.txt missing. Previous: {previous_addresses}, Current: {current_addresses}. Generating new QR codes.")
+        if not os.path.exists(ip_file) or previous_addresses != current_addresses or not addresses:
+            logger.info(f"Addresses changed, ip.txt missing, or no addresses detected. Previous: {previous_addresses}, Current: {current_addresses}. Generating QR codes.")
             # Save the new addresses
             try:
                 with open(ip_file, "w") as f:
