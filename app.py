@@ -1,25 +1,5 @@
-
-This error occurs in the `save_qr_code` function due to an issue with Pillow’s `font.getbbox` method when calculating text dimensions for annotating QR codes. Below, I’ll complete the modified `app.py` from the user’s partial submission, fixing the `save_qr_code` error, enhancing logging, and ensuring QR code generation when `ip.txt` is missing. I’ll also provide deployment steps and troubleshooting guidance.
-
-### Analysis Recap
-- **Root Cause**: The `save_qr_code` function fails due to an error in `font.getbbox(data)`, which expects a 4-item box or is incompatible with the font configuration, causing QR code generation to abort.
-- **Impact**: No QR codes are saved to `static/qr_codes` because the error halts `save_qr_code` before the image is saved.
-- **Other Observations**:
-  - IP detection succeeds (`192.168.4.1` for `wlan0`, `172.16.4.176` for `eth0`), and `ip.txt` removal triggers the generation logic.
-  - The USB printer is disconnected, but this doesn’t affect QR code creation, only printing.
-  - The script lacks detailed logging to trace the full execution path.
-
-### Modified `app.py`
-The following `app.py` fixes the `getbbox` error by using `font.getlength` for text width and estimating height with `font.getbbox` on a single character. It includes enhanced logging, robust error handling, and ensures QR code generation with fallback IPs. The script preserves the user’s requested features (QR code cleanup, text annotation, file listing at `/qr_codes`).
-
-```python
 import socket
 from flask import Flask, jsonify, request, send_from_directory, render_template_string
-from label_printer.routes import init_routes
-from label_printer.printing import print_qr_code
-from label_printer.history import ensure_history_file
-from label_printer.utils import resolve_usb_conflicts
-from label_printer.config import logger
 import os
 import json
 import time
@@ -32,12 +12,27 @@ import qrcode
 from datetime import datetime
 import logging
 
-# Ensure logger writes to app.log
+# Setup logger
+logger = logging.getLogger('label_printer.config')
+logger.setLevel(logging.DEBUG)
 file_handler = logging.FileHandler('/home/odroid/label_printer_web/app.log')
 file_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
+
+# Try importing label_printer modules
+try:
+    from label_printer.routes import init_routes
+    from label_printer.printing import print_qr_code
+    from label_printer.history import ensure_history_file
+    from label_printer.utils import resolve_usb_conflicts
+except ImportError as e:
+    logger.error(f"Failed to import label_printer modules: {str(e)}")
+    init_routes = lambda x: None
+    print_qr_code = lambda x: subprocess.CompletedProcess(args=['mock'], returncode=1, stdout='', stderr=str(e))
+    ensure_history_file = lambda: None
+    resolve_usb_conflicts = lambda: None
 
 app = Flask(__name__)
 
@@ -45,6 +40,7 @@ def clear_qr_code_directory():
     """
     Delete all files in the static/qr_codes directory on startup.
     """
+    logger.debug("Clearing QR code directory")
     try:
         save_dir = "/home/odroid/label_printer_web/static/qr_codes"
         os.makedirs(save_dir, exist_ok=True)
@@ -88,6 +84,7 @@ def load_wifi_ap_details(hostapd_conf="/etc/hostapd/hostapd.conf", dnsmasq_conf=
     Load Wi-Fi AP details from hostapd.conf and cross-reference with dnsmasq.conf.
     Returns a dictionary with interface, SSID, password, security, and gateway IP.
     """
+    logger.debug("Loading Wi-Fi AP details")
     wifi_details = {
         "interface": "wlan0",
         "ssid": "LabelPrinterAP",
@@ -225,15 +222,18 @@ def save_qr_code(data, filename_prefix):
         return None
 
 def load_default_settings():
+    logger.debug("Loading default settings")
     settings_file = "/home/odroid/label_printer_web/settings.txt"
     defaults = {}
-    if os.path.exists(settings_file):
-        try:
+    try:
+        if os.path.exists(settings_file):
             with open(settings_file, "r") as f:
                 defaults = json.load(f)
             logger.debug(f"Loaded default settings: {defaults}")
-        except Exception as e:
-            logger.error(f"Error loading settings.txt: {e}")
+        else:
+            logger.debug(f"Settings file {settings_file} does not exist")
+    except Exception as e:
+        logger.error(f"Error loading settings.txt: {str(e)}")
     return defaults
 
 @app.route('/qr_codes/<filename>')
@@ -334,6 +334,11 @@ def check_and_update_ip_port():
                 logger.debug(f"Saved current addresses to {ip_file}")
             except Exception as e:
                 logger.error(f"Error writing to {ip_file}: {e}")
+
+            # Ensure at least Wi-Fi QR codes are generated with fallback
+            if not addresses:
+                logger.warning("No valid addresses detected, generating Wi-Fi QR codes with fallback IP")
+                addresses.append(("wifi", wifi_details["gateway_ip"], f"http://{wifi_details['gateway_ip']}:{port}"))
 
             # Process each interface
             for interface, ip, url in addresses:
@@ -633,20 +638,30 @@ def update_codebase():
     except Exception as e:
         logger.error(f"Unexpected error in update_codebase: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
-        
+
 if __name__ == "__main__":
     logger.info("Starting Flask application")
     try:
-        # Clear QR code directory on startup
+        logger.debug("Executing clear_qr_code_directory")
         clear_qr_code_directory()
 
+        logger.debug("Executing ensure_history_file")
         ensure_history_file()
+
+        logger.debug("Executing resolve_usb_conflicts")
         resolve_usb_conflicts()
+
+        logger.debug("Executing load_default_settings")
         defaults = load_default_settings()
         app.config['DEFAULTS'] = defaults
+
+        logger.debug("Executing check_and_update_ip_port")
         check_and_update_ip_port()
+
+        logger.debug("Executing init_routes")
         init_routes(app)
-        
+
+        logger.debug("Attempting to import watch_print_directory")
         try:
             from watch_print_dir import watch_print_directory
             logger.info("Successfully imported watch_print_directory")
@@ -656,12 +671,14 @@ if __name__ == "__main__":
 
         if watch_print_directory:
             try:
+                logger.debug("Starting directory watcher thread")
                 watcher_thread = threading.Thread(target=watch_print_directory, daemon=True)
                 watcher_thread.start()
                 logger.info("Started directory watcher thread")
             except Exception as e:
                 logger.error(f"Failed to start directory watcher: {str(e)}")
-        
+
+        logger.debug("Starting Flask app.run")
         app.run(host='0.0.0.0', port=5001)
     except Exception as e:
         logger.error(f"Fatal error starting Flask application: {str(e)}")
