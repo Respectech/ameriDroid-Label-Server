@@ -1,5 +1,5 @@
 import socket
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, render_template_string
 from label_printer.routes import init_routes
 from label_printer.printing import print_qr_code
 from label_printer.history import ensure_history_file
@@ -12,7 +12,7 @@ import threading
 import subprocess
 import base64
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import qrcode
 from datetime import datetime
 import logging
@@ -25,6 +25,21 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 app = Flask(__name__)
+
+def clear_qr_code_directory():
+    """
+    Delete all files in the static/qr_codes directory on startup.
+    """
+    try:
+        save_dir = "/home/odroid/label_printer_web/static/qr_codes"
+        os.makedirs(save_dir, exist_ok=True)
+        for filename in os.listdir(save_dir):
+            file_path = os.path.join(save_dir, filename)
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+                logger.info(f"Deleted QR code file: {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to clear QR code directory: {str(e)}")
 
 def get_ip_address(interface):
     """
@@ -110,7 +125,7 @@ def generate_wifi_qr_string(wifi_details):
 
 def save_qr_code(data, filename_prefix):
     """
-    Generate a QR code from the given data and save it as a PNG in static/qr_codes.
+    Generate a QR code with the given data, add the data text below it, and save as a PNG in static/qr_codes.
     Returns the filename (relative to static/qr_codes) or None if saving fails.
     """
     try:
@@ -133,17 +148,40 @@ def save_qr_code(data, filename_prefix):
         qr.add_data(data)
         qr.make(fit=True)
 
-        # Create image
-        img = qr.make_image(fill_color="black", back_color="white")
+        # Create QR code image
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+
+        # Calculate text size and create a new image with space for text
+        font_size = 20
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+        except Exception:
+            font = ImageFont.load_default()
+        text_bbox = font.getbbox(data)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        # Create a new image with extra space for text
+        qr_width, qr_height = qr_img.size
+        new_height = qr_height + text_height + 10  # 10px padding
+        new_width = max(qr_width, text_width + 20)  # 20px padding
+        new_img = Image.new('RGB', (new_width, new_height), 'white')
+        new_img.paste(qr_img, ((new_width - qr_width) // 2, 0))
+
+        # Add text below the QR code
+        draw = ImageDraw.Draw(new_img)
+        text_x = (new_width - text_width) // 2
+        text_y = qr_height + 5
+        draw.text((text_x, text_y), data, font=font, fill='black')
 
         # Generate unique filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{filename_prefix}_{timestamp}.png"
         full_path = os.path.join(save_dir, filename)
-        
+
         # Save image
-        img.save(full_path)
-        logger.info(f"Saved QR code to {full_path}")
+        new_img.save(full_path)
+        logger.info(f"Saved QR code with text to {full_path}")
         return filename
     except Exception as e:
         logger.error(f"Failed to save QR code for {filename_prefix}: {str(e)}")
@@ -171,6 +209,36 @@ def serve_qr_code(filename):
     except Exception as e:
         logger.error(f"Error serving QR code {filename}: {str(e)}")
         return jsonify({'message': f'QR code not found: {str(e)}'}), 404
+
+@app.route('/qr_codes')
+def list_qr_codes():
+    """
+    Display a listing of QR code files in the static/qr_codes directory.
+    """
+    try:
+        save_dir = "/home/odroid/label_printer_web/static/qr_codes"
+        files = [f for f in os.listdir(save_dir) if f.endswith('.png')]
+        files.sort(reverse=True)  # Newest first
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>QR Codes</title>
+        </head>
+        <body>
+            <h1>QR Code Files</h1>
+            <ul>
+                {% for file in files %}
+                    <li><a href="/qr_codes/{{ file }}">{{ file }}</a></li>
+                {% endfor %}
+            </ul>
+        </body>
+        </html>
+        """
+        return render_template_string(html, files=files)
+    except Exception as e:
+        logger.error(f"Error listing QR codes: {str(e)}")
+        return jsonify({'message': f'Error listing QR codes: {str(e)}'}), 500
 
 def check_and_update_ip_port():
     logger.debug("Entering check_and_update_ip_port")
@@ -504,6 +572,9 @@ def update_codebase():
 if __name__ == "__main__":
     logger.info("Starting Flask application")
     try:
+        # Clear QR code directory on startup
+        clear_qr_code_directory()
+
         ensure_history_file()
         resolve_usb_conflicts()
         defaults = load_default_settings()
@@ -511,7 +582,6 @@ if __name__ == "__main__":
         check_and_update_ip_port()
         init_routes(app)
         
-        # Import watch_print_directory
         try:
             from watch_print_dir import watch_print_directory
             logger.info("Successfully imported watch_print_directory")
