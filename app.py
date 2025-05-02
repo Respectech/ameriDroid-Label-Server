@@ -432,6 +432,7 @@ def printer_status():
 
 @app.route('/save_template', methods=['POST'])
 def save_template():
+    logger.debug("Processing save_template request")
     try:
         template_name = request.form.get('template_name')
         template_config = request.form.get('template_config')
@@ -450,6 +451,15 @@ def save_template():
 
         try:
             config = json.loads(template_config)
+            logger.debug(f"Template config: {config}")
+            # Validate length_mm
+            if 'length_mm' in config:
+                if not isinstance(config['length_mm'], int) or config['length_mm'] <= 0:
+                    logger.error(f"Invalid length_mm in config: {config['length_mm']}")
+                    return jsonify({'message': 'Label length must be a positive integer'}), 400
+            else:
+                logger.warning("length_mm not found in template config, using default 100")
+                config['length_mm'] = 100
         except json.JSONDecodeError as e:
             logger.error(f"Invalid template config JSON: {str(e)}")
             return jsonify({'message': 'Invalid template configuration'}), 400
@@ -564,7 +574,7 @@ def delete_template():
             return jsonify({'message': f"Template '{template_name}' deleted successfully"}), 200
         except Exception as e:
             logger.error(f"Error deleting template '{template_name}': {str(e)}")
-            return jsonify({'message': f"Error deleting template: {str(e)}"}), 500
+            return jsonify({'message': f"Error deleting template: {str(e)}'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in delete_template: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
