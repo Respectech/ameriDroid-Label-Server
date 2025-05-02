@@ -47,7 +47,7 @@ def clear_qr_code_directory():
         for filename in os.listdir(save_dir):
             file_path = os.path.join(save_dir, filename)
             if os.path.isfile(file_path):
-                os.unlink(file_path)
+                os.unlink=file_path)
                 logger.info(f"Deleted QR code file: {file_path}")
     except Exception as e:
         logger.error(f"Failed to clear QR code directory: {str(e)}")
@@ -454,11 +454,11 @@ def save_template():
             logger.debug(f"Template config: {config}")
             # Validate length_mm
             if 'length_mm' in config:
-                if not isinstance(config['length_mm'], int) or config['length_mm'] <= 0:
-                    logger.error(f"Invalid length_mm in config: {config['length_mm']}")
-                    return jsonify({'message': 'Label length must be a positive integer'}), 400
+                if not isinstance(config['length_mm'], (int, float)) or config['length_mm'] <= 0:
+                    logger.warning(f"Invalid length_mm in config: {config['length_mm']}, setting to default 100")
+                    config['length_mm'] = 100
             else:
-                logger.warning("length_mm not found in template config, using default 100")
+                logger.warning("length_mm not found in template config, setting to default 100")
                 config['length_mm'] = 100
         except json.JSONDecodeError as e:
             logger.error(f"Invalid template config JSON: {str(e)}")
@@ -474,14 +474,14 @@ def save_template():
 
         preview_path = os.path.join(labels_dir, f"{template_name}.png")
         try:
-            if template_preview.startswith('data:image/png;base64,'):
+            if template_preview and template_preview.startswith('data:image/png;base64,'):
                 base64_string = template_preview.split(',')[1]
                 img_data = base64.b64decode(base64_string)
                 img = Image.open(BytesIO(img_data))
                 img.save(preview_path, 'PNG')
             else:
-                logger.error("Invalid preview image format")
-                return jsonify({'message': 'Invalid preview image format'}), 400
+                logger.warning("Invalid or missing preview image, skipping preview save")
+                preview_path = ''
         except Exception as e:
             logger.error(f"Error saving preview image: {str(e)}")
             return jsonify({'message': 'Error saving preview image'}), 500
@@ -489,7 +489,7 @@ def save_template():
         template = {
             'name': template_name,
             'config': config,
-            'preview_image': f"{template_name}.png",
+            'preview_image': f"{template_name}.png" if os.path.exists(preview_path) else '',
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
         }
         try:
