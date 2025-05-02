@@ -256,55 +256,68 @@ window.selectFont = function(fontName, applyToAll) {
 window.loadTemplate = function(config) {
     console.log('loadTemplate called with config:', config);
     try {
-        var form = document.getElementById('labelForm');
+        const form = document.getElementById('labelForm');
         if (!form) {
             console.error('labelForm not found');
             showAlert('Error: Label form not found', 'danger');
             return;
         }
 
-        // Reset form to clear existing values
-        form.reset();
-
         // Populate form fields
-        for (var key in config) {
-            var element = form.elements[key];
-            if (!element) {
-                // Handle renamed length_mm
-                if (key === 'length_mm') {
-                    element = form.elements['length'];
-                }
-            }
-            if (element) {
-                if (element.type === 'checkbox') {
-                    element.checked = config[key] === 'on' || config[key] === true;
-                } else if (element.type === 'radio') {
-                    var radio = form.querySelector(`input[name="${key}"][value="${config[key]}"]`);
-                    if (radio) {
-                        radio.checked = true;
-                    }
-                } else if (element.type === 'select-one') {
-                    element.value = config[key];
+        for (const [key, value] of Object.entries(config)) {
+            // Handle length_mm explicitly
+            if (key === 'length_mm') {
+                const lengthInput = form.querySelector('#length');
+                if (lengthInput) {
+                    lengthInput.value = value;
+                    console.log(`Set length input to: ${value}`);
                 } else {
-                    element.value = config[key];
+                    console.warn('length input not found');
                 }
+                continue;
+            }
+
+            // Handle other fields
+            const elements = form.querySelectorAll(`[name="${key}"]`);
+            if (elements.length > 0) {
+                elements.forEach(element => {
+                    if (element.type === 'checkbox') {
+                        element.checked = value === true || value === 'on';
+                    } else if (element.type === 'radio') {
+                        if (element.value === value) {
+                            element.checked = true;
+                        }
+                    } else if (element.type === 'select-one') {
+                        element.value = value;
+                    } else {
+                        element.value = value;
+                    }
+                    console.log(`Set ${key} to: ${value}`);
+                });
+            } else {
+                console.warn(`No elements found for ${key}`);
             }
         }
 
         // Update font-name spans for face1, face2, face3
         ['1', '2', '3'].forEach(num => {
-            var face = config[`face${num}`];
+            const face = config[`face${num}`];
             if (face) {
-                var fontElement = document.querySelector(`.font-name[data-textarea="${num}"]`);
+                const fontElement = document.querySelector(`.font-name[data-textarea="${num}"]`);
                 if (fontElement) {
                     fontElement.textContent = face;
                     fontElement.style.fontFamily = face;
+                    console.log(`Updated font-name for textarea ${num} to: ${face}`);
                 }
             }
         });
 
         // Close the load template modal
-        bootstrap.Modal.getInstance(document.getElementById('loadTemplateModal')).hide();
+        const loadModal = bootstrap.Modal.getInstance(document.getElementById('loadTemplateModal'));
+        if (loadModal) {
+            loadModal.hide();
+            console.log('Load template modal closed');
+        }
         showAlert('Template loaded successfully', 'success');
     } catch (error) {
         console.error('Error loading template:', error);
