@@ -36,8 +36,21 @@ window.saveTemplate = function() {
         var formData = new FormData(form);
         var config = {};
         formData.forEach((value, key) => {
-            config[key] = value;
+            // Convert specific fields to appropriate types
+            if (['size1', 'size2', 'size3', 'spacing1', 'spacing2', 'length'].includes(key)) {
+                config[key] = parseInt(value, 10) || 0; // Parse numbers
+            } else if (['bold1', 'italic1', 'underline1', 'bold2', 'italic2', 'underline2', 'bold3', 'italic3', 'underline3'].includes(key)) {
+                config[key] = value === 'on' || value === true; // Parse checkboxes
+            } else {
+                config[key] = value; // Strings and other types
+            }
         });
+        // Rename length to length_mm for clarity
+        if ('length' in config) {
+            config.length_mm = config.length;
+            delete config.length;
+            console.log('Renamed length to length_mm:', config.length_mm);
+        }
         // Get preview image
         var previewImg = document.querySelector('.preview-wrapper img');
         var previewSrc = previewImg ? previewImg.src : '';
@@ -47,6 +60,7 @@ window.saveTemplate = function() {
         document.getElementById('templateConfig').value = JSON.stringify(config);
         document.getElementById('templatePreview').value = previewSrc;
         saveModal.show();
+        console.log('Template config prepared:', config);
     } catch (error) {
         console.error('Error in saveTemplate:', error);
         alert('Error opening save template modal: ' + error.message);
@@ -151,7 +165,7 @@ window.updateCodebase = function() {
         .catch(error => {
             console.error('Error in updateCodebase:', error);
             try {
-                showAlert('Error updating codebaseidunt: ' + error.message, 'danger');
+                showAlert('Error updating codebase: ' + error.message, 'danger');
                 console.log('Error alert triggered:', error.message);
             } catch (alertError) {
                 console.error('Failed to show alert:', alertError);
@@ -199,8 +213,8 @@ window.selectFont = function(fontName, applyToAll) {
             var textareaNum = currentTextarea;
             var fontElement = document.querySelector('.font-name[data-textarea="' + textareaNum + '"]');
             if (fontElement) {
-                fontElement.textContent = fontName; // Fixed: Use fontElement
-                fontElement.style.fontFamily = fontName; // Fixed: Use fontElement
+                fontElement.textContent = fontName;
+                fontElement.style.fontFamily = fontName;
                 let faceInput = document.getElementById('face' + textareaNum);
                 if (faceInput) {
                     faceInput.value = fontName;
@@ -248,15 +262,19 @@ window.loadTemplate = function(config) {
         // Populate form fields
         for (var key in config) {
             var element = form.elements[key];
+            if (!element) {
+                // Handle renamed length_mm
+                if (key === 'length_mm') {
+                    element = form.elements['length'];
+                }
+            }
             if (element) {
                 if (element.type === 'checkbox') {
                     element.checked = config[key] === 'on' || config[key] === true;
                 } else if (element.type === 'radio') {
                     var radio = form.querySelector(`input[name="${key}"][value="${config[key]}"]`);
                     if (radio) {
-                        radio
-
-.checked = true;
+                        radio.checked = true;
                     }
                 } else if (element.type === 'select-one') {
                     element.value = config[key];
@@ -421,7 +439,7 @@ function showAlert(message, type) {
                         alertDiv.remove();
                         console.log('Alert removed after timeout');
                     }
-        }, 150);
+                }, 150);
             }
         }, 5000);
     } catch (error) {
@@ -514,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Ensure Save Template modal appears above Print Preview modal
+    // Ensure Save Template_modal appears above Print Preview modal
     var saveTemplateModal = document.getElementById('saveTemplateModal');
     saveTemplateModal.addEventListener('show.bs.modal', function () {
         // Set z-index for modal and backdrop
