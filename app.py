@@ -47,7 +47,7 @@ def clear_qr_code_directory():
         for filename in os.listdir(save_dir):
             file_path = os.path.join(save_dir, filename)
             if os.path.isfile(file_path):
-                os.unlink=(file_path)
+                os.unlink=file_path)
                 logger.info(f"Deleted QR code file: {file_path}")
     except Exception as e:
         logger.error(f"Failed to clear QR code directory: {str(e)}")
