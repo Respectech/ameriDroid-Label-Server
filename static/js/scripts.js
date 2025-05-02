@@ -50,17 +50,24 @@ window.saveTemplate = function() {
             config.length_mm = config.length;
             delete config.length;
             console.log('Renamed length to length_mm:', config.length_mm);
+        } else {
+            console.warn('length field missing, setting length_mm to default 100');
+            config.length_mm = 100;
         }
         // Get preview image
         var previewImg = document.querySelector('.preview-wrapper img');
         var previewSrc = previewImg ? previewImg.src : '';
+        if (!previewSrc) {
+            console.warn('Preview image not found, using empty preview');
+        }
         // Open save template modal
-        var saveModal = new bootstrap.Modal(document.getElementById('saveTemplateModal'));
+        var saveModal = bootstrap.Modal.getInstance(document.getElementById('saveTemplateModal')) || new bootstrap.Modal(document.getElementById('saveTemplateModal'));
         // Set hidden inputs
         document.getElementById('templateConfig').value = JSON.stringify(config);
         document.getElementById('templatePreview').value = previewSrc;
-        saveModal.show();
         console.log('Template config prepared:', config);
+        console.log('Opening saveTemplateModal');
+        saveModal.show();
     } catch (error) {
         console.error('Error in saveTemplate:', error);
         alert('Error opening save template modal: ' + error.message);
@@ -532,7 +539,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Ensure Save Template_modal appears above Print Preview modal
+    // Ensure Save Template modal appears above Print Preview modal
     var saveTemplateModal = document.getElementById('saveTemplateModal');
     saveTemplateModal.addEventListener('show.bs.modal', function () {
         // Set z-index for modal and backdrop
