@@ -574,7 +574,7 @@ def delete_template():
             return jsonify({'message': f"Template '{template_name}' deleted successfully"}), 200
         except Exception as e:
             logger.error(f"Error deleting template '{template_name}': {str(e)}")
-            return jsonify({'message': f"Error deleting template: {str(e)}'}), 500
+            return jsonify({'message': f"Error deleting template: {str(e)}'"}), 500
     except Exception as e:
         logger.error(f"Unexpected error in delete_template: {str(e)}")
         return jsonify({'message': f'Unexpected error: {str(e)}'}), 500
