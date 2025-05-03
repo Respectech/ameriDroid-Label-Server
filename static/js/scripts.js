@@ -131,16 +131,13 @@ window.restartWebserver = function() {
 window.updateCodebase = function() {
     console.log('updateCodebase called');
     try {
-        if (!confirm('Are you sure you want to update the codebase to the latest version? The server will restart, and this may take a few seconds.')) {
-            console.log('Update canceled');
-            return;
-        }
-        console.log('Sending POST to /update_codebase');
+        console.log('Sending POST to /update_codebase', { force: true });
         fetch('/update_codebase', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ force: true })
         })
         .then(response => {
             console.log('Received response from /update_codebase:', response);
