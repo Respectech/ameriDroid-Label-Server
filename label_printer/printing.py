@@ -146,50 +146,41 @@ def print_qr_code(url, exclude_text=False):
             print_cmd.append("--red")
         print_cmd.append(img_path)
 
-        for attempt in range(3):
-            try:
-                logger.debug(f"Executing QR print (tape_type: {tape_type}, attempt {attempt + 1}/3): {' '.join(print_cmd)}")
-                result = subprocess.run(print_cmd, capture_output=True, text=True, check=True)
-                logger.debug(f"Output: {result.stdout}")
-                logger.debug(f"Error (if any): {result.stderr}")
-                if "Printing was successful" in result.stderr:
-                    logger.info(f"Successfully printed QR code (tape_type: {tape_type}) on attempt {attempt + 1}")
-                    os.remove(img_path)
-                    cleaned_output = [line for line in result.stderr.splitlines() if "deprecation warning" not in line.lower()]
-                    return {'status': 'success', 'message': "\n".join(cleaned_output) or "Printing was successful."}
-                else:
-                    logger.warning(f"Print attempt {attempt + 1} (tape_type: {tape_type}) failed with output: {result.stderr}")
-                    resolve_usb_conflicts()
-                    time.sleep(2)
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Print attempt {attempt + 1} (tape_type: {tape_type}) failed with error: {e.stderr}")
-                if "Resource busy" in e.stderr.lower() or "usberror" in e.stderr.lower():
-                    logger.info("Detected USB conflict, resolving...")
-                    resolve_usb_conflicts()
-                    time.sleep(2)
-                else:
-                    logger.error(f"Unexpected subprocess error (tape_type: {tape_type}): {e.stderr}")
-                    break
-            except Exception as e:
-                logger.error(f"Unexpected error during print attempt {attempt + 1} (tape_type: {tape_type}): {str(e)}")
-                if "Resource busy" in str(e).lower() or "USBError" in str(e):
-                    logger.info("Detected USB conflict, resolving...")
-                    resolve_usb_conflicts()
-                    time.sleep(2)
-                else:
-                    logger.error(f"Non-USB error (tape_type: {tape_type}), aborting: {str(e)}")
-                    break
-        else:
-            logger.error(f"Failed to print QR code (tape_type: {tape_type}) after 3 attempts")
+        try:
+            logger.debug(f"Executing QR print (tape_type: {tape_type}): {' '.join(print_cmd)}")
+            result = subprocess.run(print_cmd, capture_output=True, text=True, check=True)
+            logger.debug(f"Output: {result.stdout}")
+            logger.debug(f"Error (if any): {result.stderr}")
+            if "Printing was successful" in result.stderr:
+                logger.info(f"Successfully printed QR code (tape_type: {tape_type})")
+                os.remove(img_path)
+                cleaned_output = [line for line in result.stderr.splitlines() if "deprecation warning" not in line.lower()]
+                return {'status': 'success', 'message': "\n".join(cleaned_output) or "Printing was successful."}
+            else:
+                logger.error(f"Failed to print QR code (tape_type: {tape_type}) with output: {result.stderr}")
+                os.remove(img_path)
+                return {'status': 'error', 'message': f'Failed to print QR code (tape_type: {tape_type})'}
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to print QR code (tape_type: {tape_type}) with error: {e.stderr}")
+            if "Resource busy" in e.stderr.lower() or "usberror" in e.stderr.lower():
+                logger.info("Detected USB conflict, resolving...")
+                resolve_usb_conflicts()
             os.remove(img_path)
-            return {'status': 'error', 'message': f'Failed to print QR code (tape_type: {tape_type}) after 3 attempts'}
+            return {'status': 'error', 'message': f'Failed to print QR code (tape_type: {tape_type}): {e.stderr}'}
+        except Exception as e:
+            logger.error(f"Unexpected error printing QR code (tape_type: {tape_type}): {str(e)}")
+            if "Resource busy" in str(e).lower() or "USBError" in str(e):
+                logger.info("Detected USB conflict, resolving...")
+                resolve_usb_conflicts()
+            os.remove(img_path)
+            return {'status': 'error', 'message': f'Error printing QR code (tape_type: {tape_type}): {str(e)}'}
 
     except Exception as e:
         logger.error(f"Error in print_qr_code: {str(e)}")
         if os.path.exists(img_path):
             os.remove(img_path)
         return {'status': 'error', 'message': f'Error in print_qr_code: {str(e)}'}
-
+        
 def print_file(file_path):
     """Print an image or PDF file with cropping, custom scaling, and optional grayscale/dithering."""
     output_path = "/tmp/print_file.png"  # Define early to avoid UnboundLocalError
