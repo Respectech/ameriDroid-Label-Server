@@ -603,30 +603,65 @@ def update_codebase():
             logger.error(f"Git is not installed or not accessible: {str(e)}")
             return jsonify({'message': 'Git is not installed on the server'}), 500
 
-        logger.debug("Executing git pull origin main")
+        # Get force parameter from request
+        data = request.get_json() or {}
+        force = data.get('force', False)
+        logger.debug(f"Force update requested: {force}")
+
         env = os.environ.copy()
         env['HOME'] = '/home/odroid'
-        try:
-            result = subprocess.run(
-                ['git', '-C', codebase_dir, 'pull', 'origin', 'main'],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=30,
-                env=env
-            )
-            logger.info(f"Git pull stdout: {result.stdout}")
-            if result.stderr:
-                logger.warning(f"Git pull stderr: {result.stderr}")
-        except subprocess.TimeoutExpired as e:
-            logger.error(f"Git pull timed out after 30 seconds: stdout={e.stdout}, stderr={e.stderr}")
-            return jsonify({'message': 'Git pull operation timed out'}), 500
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Git pull failed: stdout={e.stdout}, stderr={e.stderr}")
-            return jsonify({'message': f'Failed to update codebase: {e.stderr}'}), 500
-        except Exception as e:
-            logger.error(f"Unexpected error during git pull: {str(e)}")
-            return jsonify({'message': f'Unexpected error during git pull: {str(e)}'}), 500
+
+        if force:
+            logger.debug("Executing forced update: git fetch, reset, pull")
+            try:
+                # Fetch the latest changes
+                result = subprocess.run(
+                    ['git', '-C', codebase_dir, 'fetch', 'origin'],
+                    capture_output=True, text=True, check=True, timeout=30, env=env
+                )
+                logger.info(f"Git fetch stdout: {result.stdout}")
+                if result.stderr:
+                    logger.warning(f"Git fetch stderr: {result.stderr}")
+
+                # Reset to origin/main, overwriting local changes
+                result = subprocess.run(
+                    ['git', '-C', codebase_dir, 'reset', '--hard', 'origin/main'],
+                    capture_output=True, text=True, check=True, timeout=30, env=env
+                )
+                logger.info(f"Git reset stdout: {result.stdout}")
+                if result.stderr:
+                    logger.warning(f"Git reset stderr: {result.stderr}")
+
+                # Pull to ensure working directory is updated
+                result = subprocess.run(
+                    ['git', '-C', codebase_dir, 'pull'],
+                    capture_output=True, text=True, check=True, timeout=30, env=env
+                )
+                logger.info(f"Git pull stdout: {result.stdout}")
+                if result.stderr:
+                    logger.warning(f"Git pull stderr: {result.stderr}")
+            except subprocess.TimeoutExpired as e:
+                logger.error(f"Forced update timed out after 30 seconds: stdout={e.stdout}, stderr={e.stderr}")
+                return jsonify({'message': 'Forced update operation timed out'}), 500
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Forced update failed: stdout={e.stdout}, stderr={e.stderr}")
+                return jsonify({'message': f'Failed to force update codebase: {e.stderr}'}), 500
+        else:
+            logger.debug("Executing git pull origin main")
+            try:
+                result = subprocess.run(
+                    ['git', '-C', codebase_dir, 'pull', 'origin', 'main'],
+                    capture_output=True, text=True, check=True, timeout=30, env=env
+                )
+                logger.info(f"Git pull stdout: {result.stdout}")
+                if result.stderr:
+                    logger.warning(f"Git pull stderr: {result.stderr}")
+            except subprocess.TimeoutExpired as e:
+                logger.error(f"Git pull timed out after 30 seconds: stdout={e.stdout}, stderr={e.stderr}")
+                return jsonify({'message': 'Git pull operation timed out'}), 500
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Git pull failed: stdout={e.stdout}, stderr={e.stderr}")
+                return jsonify({'message': f'Failed to update codebase: {e.stderr}'}), 500
 
         logger.debug("Initiating systemctl restart label-printer.service")
         try:
