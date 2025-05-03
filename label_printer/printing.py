@@ -125,21 +125,96 @@ def print_qr_code(url, exclude_text=False):
         logger.debug(f"Padded image size: {padded_img.width}x{padded_img.height}px")
 
         brother_ql_path = os.path.expanduser("~/.local/bin/brother_ql")
-        print_cmd = [
+        base_print_cmd = [
             brother_ql_path, "--backend", "pyusb",
             "--model", "QL-810W", "--printer", "usb://0x04f9:0x209c",
             "print", "--label", "62", img_path
         ]
-        logger.debug(f"Executing QR print: {' '.join(print_cmd)}")
-        result = subprocess.run(print_cmd, capture_output=True, text=True)
-        logger.debug(f"Output: {result.stdout}")
-        logger.debug(f"Error (if any): {result.stderr}")
 
-        os.remove(img_path)
-        return result
+        # Try printing without --red first (black on white)
+        for attempt in range(3):
+            try:
+                print_cmd = base_print_cmd.copy()
+                logger.debug(f"Executing QR print (black on white, attempt {attempt + 1}/3): {' '.join(print_cmd)}")
+                result = subprocess.run(print_cmd, capture_output=True, text=True, check=True)
+                logger.debug(f"Output: {result.stdout}")
+                logger.debug(f"Error (if any): {result.stderr}")
+                if "Printing was successful" in result.stderr:
+                    logger.info(f"Successfully printed QR code (black on white) on attempt {attempt + 1}")
+                    os.remove(img_path)
+                    cleaned_output = [line for line in result.stderr.splitlines() if "deprecation warning" not in line.lower()]
+                    return {'status': 'success', 'message': "\n".join(cleaned_output) or "Printing was successful."}
+                else:
+                    logger.warning(f"Print attempt {attempt + 1} (black on white) failed with output: {result.stderr}")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Print attempt {attempt + 1} (black on white) failed with error: {e.stderr}")
+                if "Resource busy" in e.stderr.lower() or "usberror" in e.stderr.lower():
+                    logger.info("Detected USB conflict, resolving...")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+                else:
+                    logger.error(f"Unexpected subprocess error (black on white): {e.stderr}")
+                    break
+            except Exception as e:
+                logger.error(f"Unexpected error during print attempt {attempt + 1} (black on white): {str(e)}")
+                if "Resource busy" in str(e).lower() or "USBError" in str(e):
+                    logger.info("Detected USB conflict, resolving...")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+                else:
+                    logger.error(f"Non-USB error (black on white), aborting: {str(e)}")
+                    break
+        else:
+            logger.warning("Failed to print QR code (black on white) after 3 attempts, trying with --red")
+
+        # Retry with --red (black/red on white)
+        for attempt in range(3):
+            try:
+                print_cmd = base_print_cmd.copy()
+                print_cmd.insert(-1, "--red")  # Add --red before img_path
+                logger.debug(f"Executing QR print (black/red on white, attempt {attempt + 1}/3): {' '.join(print_cmd)}")
+                result = subprocess.run(print_cmd, capture_output=True, text=True, check=True)
+                logger.debug(f"Output: {result.stdout}")
+                logger.debug(f"Error (if any): {result.stderr}")
+                if "Printing was successful" in result.stderr:
+                    logger.info(f"Successfully printed QR code (black/red on white) on attempt {attempt + 1}")
+                    os.remove(img_path)
+                    cleaned_output = [line for line in result.stderr.splitlines() if "deprecation warning" not in line.lower()]
+                    return {'status': 'success', 'message': "\n".join(cleaned_output) or "Printing was successful."}
+                else:
+                    logger.warning(f"Print attempt {attempt + 1} (black/red on white) failed with output: {result.stderr}")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Print attempt {attempt + 1} (black/red on white) failed with error: {e.stderr}")
+                if "Resource busy" in e.stderr.lower() or "usberror" in e.stderr.lower():
+                    logger.info("Detected USB conflict, resolving...")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+                else:
+                    logger.error(f"Unexpected subprocess error (black/red on white): {e.stderr}")
+                    break
+            except Exception as e:
+                logger.error(f"Unexpected error during print attempt {attempt + 1} (black/red on white): {str(e)}")
+                if "Resource busy" in str(e).lower() or "USBError" in str(e):
+                    logger.info("Detected USB conflict, resolving...")
+                    resolve_usb_conflicts()
+                    time.sleep(2)
+                else:
+                    logger.error(f"Non-USB error (black/red on white), aborting: {str(e)}")
+                    break
+        else:
+            logger.error("Failed to print QR code (black/red on white) after 3 attempts")
+            os.remove(img_path)
+            return {'status': 'error', 'message': 'Failed to print QR code after 3 attempts with black/red on white'}
+
     except Exception as e:
         logger.error(f"Error in print_qr_code: {str(e)}")
-        raise
+        if os.path.exists(img_path):
+            os.remove(img_path)
+        return {'status': 'error', 'message': f'Error in print_qr_code: {str(e)}'}
 
 def print_file(file_path):
     """Print an image or PDF file with cropping, custom scaling, and optional grayscale/dithering."""
